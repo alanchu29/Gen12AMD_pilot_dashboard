@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const zlib = require("zlib");
 const Engine = require("../js/engine.js");
 
 // ---- minimal Sheets mock (cells hold what getDisplayValues would show) ----
@@ -86,6 +87,32 @@ class Sheet {
   }
 }
 
+// ---- CacheService / Utilities mocks (values over 100 KB are rejected, like the real CacheService) ----
+const cacheStore = new Map();
+const cache = {
+  get: (k) => (cacheStore.has(k) ? cacheStore.get(k) : null),
+  getAll: (keys) => Object.fromEntries(keys.filter((k) => cacheStore.has(k)).map((k) => [k, cacheStore.get(k)])),
+  putAll(entries) {
+    for (const [k, v] of Object.entries(entries)) {
+      if (Buffer.byteLength(v) > 100 * 1024) throw new Error("cache value too large: " + k);
+      cacheStore.set(k, v);
+    }
+  },
+  remove: (k) => cacheStore.delete(k),
+};
+class Blob {
+  constructor(buf) {
+    this.buf = buf;
+  }
+  getBytes() {
+    return [...this.buf].map((b) => (b > 127 ? b - 256 : b)); // Apps Script bytes are signed
+  }
+  getDataAsString() {
+    return this.buf.toString("utf8");
+  }
+}
+const toBuf = (d) => (typeof d === "string" ? Buffer.from(d, "utf8") : Buffer.from(d.map((b) => b & 255)));
+
 const sheets = {};
 const ctx = {
   SpreadsheetApp: {
@@ -97,6 +124,14 @@ const ctx = {
   },
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === "EDIT_KEY" ? ctx.__key : null) }) },
+  CacheService: { getScriptCache: () => cache },
+  Utilities: {
+    newBlob: (d) => new Blob(toBuf(d)),
+    gzip: (b) => new Blob(zlib.gzipSync(b.buf)),
+    ungzip: (b) => new Blob(zlib.gunzipSync(b.buf)),
+    base64Encode: (bytes) => toBuf(bytes).toString("base64"),
+    base64Decode: (s) => [...Buffer.from(s, "base64")].map((b) => (b > 127 ? b - 256 : b)),
+  },
   __key: null,
 };
 vm.createContext(ctx);
@@ -140,6 +175,17 @@ check("JSONP wrapper", cbText.startsWith("cb_1(") && cbText.endsWith(")"));
 check("JSONP rejects unsafe callback", !get({ action: "bundle", callback: "alert(1)//" }).startsWith("alert"));
 
 let data = bundle();
+check("bundle cached in chunks", Number(cacheStore.get("bundle:n")) > 1, cacheStore.get("bundle:n"));
+{
+  // A cached read must not touch the sheets: hide them and read again.
+  const saved = { ...sheets };
+  for (const k of Object.keys(sheets)) delete sheets[k];
+  const cached = bundle();
+  Object.assign(sheets, saved);
+  check("bundle served from cache", JSON.stringify(cached) === JSON.stringify(data));
+}
+check("onEdit clears cache", (ctx.onEdit(), !cacheStore.has("bundle:n")));
+check("rebuilt after onEdit", JSON.stringify(bundle()) === JSON.stringify(data));
 check("pfam count", data.pfams.length === seed.pfams.length, data.pfams.length);
 check("calendars", Object.keys(data.calendars).length === 5 && data.calendars.WYLZ.holidays.length === seed.calendars.WYLZ.holidays.length);
 check("source meta", data.source.file === seed.source.file);
@@ -217,7 +263,9 @@ check("deleted pfam gone", !b2.pfams.some((x) => x.id === "pNew") && b2.pfams.le
 // 4. calendars
 const cals = JSON.parse(JSON.stringify(seed.calendars));
 cals.WYLZ.holidays.push({ date: "2030-01-01", name: "x" });
+bundle();
 check("saveCalendars", post({ action: "saveCalendars", calendars: cals }).ok);
+check("write clears cache", !cacheStore.has("bundle:n"));
 check("calendar saved", bundle().calendars.WYLZ.holidays.some((h) => h.date === "2030-01-01"));
 
 // 5. edit key

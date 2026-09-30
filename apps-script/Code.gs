@@ -33,8 +33,8 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   var out;
   try {
-    if (p.action === 'bundle') out = { ok: true, data: readBundle_() };
-    else out = { ok: true, service: 'Gen12AMD_Pilot_gantt', time: new Date().toISOString() };
+    if (p.action === 'bundle') return respondJson_(bundleJson_(), p.callback);
+    out = { ok: true, service: 'Gen12AMD_Pilot_gantt', time: new Date().toISOString() };
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
   }
@@ -58,13 +58,85 @@ function doPost(e) {
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
   } finally {
+    cacheClear_(); // still under the lock, so a cache rebuild never sees a half-finished write
     try { lock.releaseLock(); } catch (ignore) {}
   }
   return respond_(out);
 }
 
+/** Simple trigger: edits made directly in the spreadsheet also invalidate the cached bundle. */
+function onEdit() {
+  cacheClear_();
+}
+
+// ---------------------------------------------------------------- bundle cache
+// Reading every sheet takes several seconds, so the bundle JSON is kept in CacheService (gzip + base64,
+// split into chunks under the 100 KB value limit) until the next write or CACHE_TTL. A miss is rebuilt
+// under the script lock, which writes also hold.
+
+var CACHE_KEY = 'bundle';
+var CACHE_CHUNK = 90000;
+var CACHE_TTL = 21600; // 6 h, the CacheService maximum
+
+function bundleJson_() {
+  var json = cacheGet_();
+  if (json) return json;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    json = cacheGet_(); // another request may have rebuilt it while this one waited
+    if (json) return json;
+    json = JSON.stringify({ ok: true, data: readBundle_() });
+    cachePut_(json);
+    return json;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function cacheGet_() {
+  try {
+    var cache = CacheService.getScriptCache();
+    var n = Number(cache.get(CACHE_KEY + ':n'));
+    if (!n) return null;
+    var keys = [];
+    for (var i = 0; i < n; i++) keys.push(CACHE_KEY + ':' + i);
+    var parts = cache.getAll(keys);
+    var b64 = '';
+    for (var j = 0; j < n; j++) {
+      if (parts[keys[j]] == null) return null; // a chunk was evicted
+      b64 += parts[keys[j]];
+    }
+    return Utilities.ungzip(Utilities.newBlob(Utilities.base64Decode(b64), 'application/x-gzip')).getDataAsString('UTF-8');
+  } catch (err) {
+    return null;
+  }
+}
+
+function cachePut_(json) {
+  try {
+    var b64 = Utilities.base64Encode(Utilities.gzip(Utilities.newBlob(json, 'application/json')).getBytes());
+    var n = Math.ceil(b64.length / CACHE_CHUNK);
+    var entries = {};
+    for (var i = 0; i < n; i++) entries[CACHE_KEY + ':' + i] = b64.slice(i * CACHE_CHUNK, (i + 1) * CACHE_CHUNK);
+    entries[CACHE_KEY + ':n'] = String(n);
+    CacheService.getScriptCache().putAll(entries, CACHE_TTL);
+  } catch (ignore) {
+    // caching is best effort; the next request just reads the sheets again
+  }
+}
+
+function cacheClear_() {
+  try {
+    CacheService.getScriptCache().remove(CACHE_KEY + ':n');
+  } catch (ignore) {}
+}
+
 function respond_(obj, callback) {
-  var json = JSON.stringify(obj);
+  return respondJson_(JSON.stringify(obj), callback);
+}
+
+function respondJson_(json, callback) {
   if (callback && /^[A-Za-z_$][\w$]{0,63}$/.test(callback)) {
     return ContentService.createTextOutput(callback + '(' + json + ')').setMimeType(ContentService.MimeType.JAVASCRIPT);
   }

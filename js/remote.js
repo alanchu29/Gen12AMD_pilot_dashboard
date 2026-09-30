@@ -5,7 +5,7 @@
  */
 (function () {
   const LS_REMOTE = "npiGantt.remote.v1";
-  const TIMEOUT_MS = 30000;
+  const TIMEOUT_MS = 60000; // an idle Apps Script web app can take 10-30 s to cold-start
   // Built-in Apps Script web app URL (ending in /exec). When set, every page load starts in cloud mode
   // and the browser's local copy (last cloud snapshot or seed) is only a fallback while the cloud is unreachable.
   // Leave empty to default to local mode.
