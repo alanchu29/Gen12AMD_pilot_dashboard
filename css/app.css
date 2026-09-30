@@ -182,6 +182,7 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; backgr
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .brand > div { min-width: 0; }
 .brand h1 { font-size: 17px; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand h1 .byline { margin-left: 6px; font-size: 12px; font-weight: 400; color: rgba(255, 255, 255, 0.72); letter-spacing: 0; }
 .brand p { margin: 0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60vw; color: rgba(255, 255, 255, 0.72); }
 .logo { width: 34px; height: 34px; flex: none; background: #fff; border-radius: 9px; padding: 5px; fill: #2a78d6; }
 .logo rect:nth-child(2) { fill: #eb6834; }
@@ -243,7 +244,8 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; backgr
 .menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
 
 /* ------------------------------------------------------------------ layout */
-main { padding: 20px 24px 64px; display: grid; gap: 20px; max-width: 1800px; margin: 0 auto; }
+main { padding: 20px 24px 24px; display: grid; gap: 20px; max-width: 1800px; margin: 0 auto; }
+.site-footer { padding: 16px 24px 48px; text-align: center; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); max-width: 1800px; margin: 0 auto; }
 .panel {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 18px 20px; min-width: 0;
