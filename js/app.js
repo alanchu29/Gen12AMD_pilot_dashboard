@@ -760,7 +760,7 @@
     $("#btnUndo").addEventListener("click", doUndo);
     $("#btnRedo").addEventListener("click", doRedo);
     $("#btnTheme").addEventListener("click", () => {
-      const order = ["auto", "light", "dark"];
+      const order = ["dark", "light", "auto"];
       Store.setUi({ theme: order[(order.indexOf(Store.ui.theme) + 1) % 3] });
     });
     $("#syncChip").addEventListener("click", openCloud);

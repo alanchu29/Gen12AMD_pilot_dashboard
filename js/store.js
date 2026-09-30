@@ -31,13 +31,13 @@
     filters: { gen: [], site: [], phase: [], sku: [] },
     showHidden: false,
     sort: "start", // L10 Build date
-    uiRev: 2, // bump to migrate saved UI settings when a default changes (see init)
+    uiRev: 3, // bump to migrate saved UI settings when a default changes (see init)
     zoom: "week",
     colorBy: "owner",
     showDeps: false,
     showBaseline: true,
     collapsed: {},
-    theme: "auto",
+    theme: "dark",
     tableOpen: true,
     focusRoles: ["STE", "MTE"], // tasks whose LEAD contains these get highlighted
     highlight: true,
@@ -64,6 +64,7 @@
       const savedUi = lsGet(LS_UI) || {};
       this.ui = Object.assign(clone(DEFAULT_UI), savedUi);
       if ((savedUi.uiRev || 1) < 2) this.ui.sort = DEFAULT_UI.sort; // rev 2: default sort became L10 Build
+      if ((savedUi.uiRev || 1) < 3 && this.ui.theme === "auto") this.ui.theme = DEFAULT_UI.theme; // rev 3: default theme became dark
       this.ui.uiRev = DEFAULT_UI.uiRev;
       this.ui.filters = Object.assign(clone(DEFAULT_UI.filters), this.ui.filters || {});
       this.dirty = new Set(lsGet(LS_DIRTY) || []);
