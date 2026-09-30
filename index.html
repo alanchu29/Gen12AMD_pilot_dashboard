@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gen12 AMD Pilot Gantt</title>
+  <meta name="description" content="NPI PFAM 專案排程總覽與甘特圖">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="10" height="3" rx="1.5"/><rect x="7" y="10.5" width="12" height="3" rx="1.5"/><rect x="11" y="16" width="8" height="3" rx="1.5"/></svg>
+      <div>
+        <h1>Gen12 AMD Pilot Gantt</h1>
+        <p id="sourceLine" class="muted"></p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="syncChip" class="sync-chip local" type="button">本機模式</button>
+      <button id="btnUndo" class="icon" type="button" title="復原 (Ctrl+Z)" aria-label="復原">↶</button>
+      <button id="btnRedo" class="icon" type="button" title="重做 (Ctrl+Y)" aria-label="重做">↷</button>
+      <div class="menu-wrap">
+        <button id="btnData" class="btn" type="button" aria-haspopup="true" aria-expanded="false">資料 ▾</button>
+        <div id="dataMenu" class="menu" role="menu" hidden>
+          <button role="menuitem" data-menu="export">匯出 JSON 備份</button>
+          <button role="menuitem" data-menu="xlsx" class="strong">⤓ 匯入新版 Excel…</button>
+          <hr>
+          <button role="menuitem" data-menu="import">匯入 JSON…</button>
+          <hr>
+          <button role="menuitem" data-menu="holidays">廠區假日設定…</button>
+          <button role="menuitem" data-menu="cloud">Google Sheet 雲端同步…</button>
+          <hr>
+          <button role="menuitem" data-menu="reset" class="danger">重設為 Excel 原始資料</button>
+        </div>
+      </div>
+      <button id="btnTheme" class="icon" type="button" aria-label="切換主題">◐</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="portfolio" aria-labelledby="pfTitle">
+      <div class="panel-head">
+        <h2 id="pfTitle">專案總覽 <span id="pfCount" class="count"></span></h2>
+        <div id="pfSummary" class="pf-summary" aria-label="依目前階段統計"></div>
+      </div>
+      <div id="pfFilters"></div>
+      <div id="pfList"></div>
+    </section>
+
+    <section class="panel empty-detail" id="emptyDetail">
+      <p>點選上方任一 PFAM，這裡會顯示它的甘特圖、關鍵日期與任務明細。</p>
+    </section>
+
+    <section class="panel" id="detail" hidden aria-label="PFAM 詳細排程">
+      <div id="detailHead" class="detail-head"></div>
+      <div id="kpis" class="kpis"></div>
+
+      <div class="gantt-toolbar">
+        <div class="seg" role="group" aria-label="時間刻度">
+          <button type="button" data-zoom="day">日</button>
+          <button type="button" data-zoom="week">週</button>
+          <button type="button" data-zoom="month">月</button>
+        </div>
+        <label class="sel">顏色
+          <select id="colorBy">
+            <option value="owner">負責單位</option>
+            <option value="section">區段</option>
+          </select>
+        </label>
+        <div class="hl-ctl" role="group" aria-label="高亮我的任務">
+          <label class="toggle"><input type="checkbox" id="optHl"> 高亮</label>
+          <input id="focusRoles" class="roles" aria-label="要高亮的負責角色" title="以逗號分隔，例如 STE, MTE" placeholder="STE, MTE">
+          <label class="toggle"><input type="checkbox" id="optOnly"> 只看這些任務</label>
+        </div>
+        <label class="toggle"><input type="checkbox" id="optBase"> 基準比較</label>
+        <label class="toggle"><input type="checkbox" id="optDeps"> 相依線</label>
+        <button type="button" class="btn ghost" id="btnToday">今天</button>
+        <button type="button" class="btn ghost" id="btnCollapse">收合 / 展開區段</button>
+        <div id="ganttLegend" class="legend"></div>
+      </div>
+      <div id="gantt" class="gantt"></div>
+      <p class="hint">滑過任務看細節 · 雙擊任務可跳到下方表格編輯 · 點 ▾ 收合區段</p>
+
+      <details id="assumptions" class="fold">
+        <summary><span>假設與風險<span id="asmScope"></span></span><span id="asmCount" class="muted"></span></summary>
+        <textarea id="asmText" class="asm" aria-label="假設與風險" placeholder="記錄這個 PFAM 的排程假設與風險…"></textarea>
+      </details>
+
+      <details id="rawSec" class="fold">
+        <summary><span>Raw data · 任務明細（可直接編輯，甘特圖即時更新）</span><span id="rawCount" class="muted"></span></summary>
+        <div class="raw-tools">
+          <button type="button" class="btn" id="btnAddSection">＋ 區段</button>
+          <button type="button" class="btn" id="btnAddTask">＋ 任務</button>
+          <span class="spacer"></span>
+          <span id="baselineNote" class="muted"></span>
+          <button type="button" class="btn ghost" id="btnRebase">設為新基準</button>
+          <button type="button" class="btn ghost" id="btnRevert">還原為 Excel 版本</button>
+        </div>
+        <details class="info-fold">
+          <summary>專案資訊</summary>
+          <div id="infoForm" class="info-form"></div>
+        </details>
+        <div id="tableTabs" class="tabs" role="tablist" aria-label="編輯哪個 build 分頁"></div>
+        <div id="tableWrap"></div>
+        <p class="hint">「依前置」：開始日 = 前置任務結束日 + Lag 個工作天（等同 Excel 的 WORKDAY 公式）。直接輸入開始日會改為「固定日期」；輸入結束日會回推工作天。Enter 移到下一列同一欄。</p>
+      </details>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <input type="file" id="fileImport" accept="application/json,.json" hidden>
+  <input type="file" id="fileXlsx" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+
+  <dialog id="dlgImport" class="dialog wide" aria-labelledby="impTitle">
+    <form method="dialog">
+      <h3 id="impTitle">匯入新版 Excel · 差異預覽</h3>
+      <div class="imp-body"></div>
+      <div class="dlg-actions">
+        <span class="muted">套用後可從提示訊息「復原匯入」。</span>
+        <span class="spacer"></span>
+        <button class="btn ghost" value="cancel">取消</button>
+        <button type="button" class="btn primary" id="impApply">套用匯入</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgCloud" class="dialog" aria-labelledby="cloudTitle">
+    <form method="dialog">
+      <h3 id="cloudTitle">Google Sheet 雲端同步</h3>
+      <p class="muted">部署 <code>apps-script/Code.gs</code> 為 Web App 後，貼上網址（結尾 /exec）。步驟見 README。</p>
+      <label class="field"><span>Apps Script 網址</span><input id="cloudUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label>
+      <label class="field"><span>Edit key（選填，需與 Script properties 的 EDIT_KEY 相同）</span><input id="cloudKey" type="password" autocomplete="off"></label>
+      <p id="cloudMsg" class="msg" role="status"></p>
+      <div class="dlg-actions">
+        <button type="button" class="btn ghost" id="cloudOff">停用雲端</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost" id="cloudTest">測試連線</button>
+        <button type="button" class="btn ghost" id="cloudShare" title="產生 ?gas= 分享連結，同事開啟即自動連線（不含 Edit key）">複製分享連結</button>
+        <button type="button" class="btn ghost" id="cloudUpload">上傳本機資料（覆蓋雲端）</button>
+        <button type="button" class="btn primary" id="cloudSave">啟用並從雲端載入</button>
+        <button class="btn ghost" value="cancel">關閉</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlgHol" class="dialog" aria-labelledby="holTitle">
+    <form method="dialog">
+      <h3 id="holTitle">廠區假日設定</h3>
+      <p class="muted">一行一天：<code>2027-01-01 New Year</code>。週六日固定為非工作日，不需列出。</p>
+      <label class="field"><span>廠區</span><select id="holSite"></select></label>
+      <textarea id="holText" class="hol-text" spellcheck="false" aria-label="假日清單"></textarea>
+      <p id="holMsg" class="msg" role="status"></p>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button class="btn ghost" value="cancel">取消</button>
+        <button type="button" class="btn primary" id="holSave">儲存並重算</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="data/seed.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/remote.js"></script>
+  <script src="js/groups.js"></script>
+  <script src="js/importer.js"></script>
+  <script src="js/xlimport.js"></script>
+  <script src="js/gantt.js"></script>
+  <script src="js/table.js"></script>
+  <script src="js/portfolio.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

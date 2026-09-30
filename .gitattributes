@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.min.js -diff linguist-vendored
+data/seed.js -diff
+data/seed.json -diff
