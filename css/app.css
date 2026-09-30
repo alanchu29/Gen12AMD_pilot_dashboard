@@ -199,6 +199,17 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.92em; backgr
 .sync-chip.synced::before { background: #4ee24e; }
 .sync-chip.syncing::before { background: #ffd24d; animation: pulse 1s infinite; }
 .sync-chip.error::before, .sync-chip.conflict::before { background: #ff6b6b; }
+.sync-chip.dirty { background: #ff9f1a; border-color: #ff9f1a; color: #2b1700; font-weight: 700; }
+.sync-chip.dirty::before { background: #2b1700; }
+.btn.sync-now, .topbar .btn.sync-now { background: #ff9f1a; border-color: #ff9f1a; color: #2b1700; font-weight: 700; }
+.btn.sync-now:hover, .topbar .btn.sync-now:hover { background: #ffb347; }
+.local-banner {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 12px 16px; border-radius: 10px;
+  background: color-mix(in srgb, #ff9f1a 18%, var(--surface)); border: 2px solid #ff9f1a; color: var(--ink); font-size: 15px; font-weight: 600;
+}
+.local-banner[hidden] { display: none; }
+.local-banner::before { content: "⚠"; font-size: 18px; color: #ff9f1a; }
+.local-banner #localBannerMsg { flex: 1 1 320px; }
 @keyframes pulse { 50% { opacity: 0.3; } }
 
 .menu-wrap { position: relative; }

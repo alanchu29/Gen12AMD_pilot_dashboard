@@ -18,6 +18,7 @@
     </div>
     <div class="top-actions">
       <button id="syncChip" class="sync-chip local" type="button">本機模式</button>
+      <button id="btnSync" class="btn sync-now" type="button" hidden>⇪ 同步到雲端</button>
       <button id="btnUndo" class="icon" type="button" title="復原 (Ctrl+Z)" aria-label="復原">↶</button>
       <button id="btnRedo" class="icon" type="button" title="重做 (Ctrl+Y)" aria-label="重做">↷</button>
       <div class="menu-wrap">
@@ -39,6 +40,11 @@
   </header>
 
   <main>
+    <div class="local-banner" id="localBanner" role="status" hidden>
+      <span id="localBannerMsg"></span>
+      <button class="btn sync-now" id="bannerSync" type="button">⇪ 同步到雲端…</button>
+      <button class="link" id="bannerDiscard" type="button">捨棄本機修改</button>
+    </div>
     <section class="panel" id="portfolio" aria-labelledby="pfTitle">
       <div class="panel-head">
         <h2 id="pfTitle">專案總覽 <span id="pfCount" class="count"></span></h2>

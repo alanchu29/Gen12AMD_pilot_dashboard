@@ -97,8 +97,19 @@
     chip.textContent = labels[sync.state];
     chip.className = "sync-chip " + sync.state;
     chip.title =
-      (offline ? "無法連線雲端，目前顯示此瀏覽器上次保存的資料（可能不是最新）。修改會先存在本機，恢復連線後自動上傳。\n" : "") +
+      (offline ? "無法連線雲端，目前顯示此瀏覽器上次保存的資料（可能不是最新）。\n" : "") +
       (sync.msg || (sync.state === "local" ? "資料存在此瀏覽器（localStorage）。點擊設定 Google Sheet 雲端同步。" : ""));
+    const ch = Remote.active ? localChanges() : null;
+    const pending = !!(ch && ch.count);
+    if (pending && sync.state === "synced") {
+      chip.textContent = "本機修改 · 未同步";
+      chip.className = "sync-chip dirty";
+      chip.title = "目前顯示的是這個瀏覽器的修改版本，其他人看不到。按「同步到雲端」上傳。";
+    }
+    $("#btnSync").hidden = !pending;
+    $("#localBanner").hidden = !pending;
+    if (pending) $("#localBannerMsg").textContent = `目前顯示為本機修改版本：${describeChanges(ch)}，只存在這個瀏覽器，其他人看不到。`;
+    hadChanges = pending;
     if (Store.saveError) {
       chip.textContent = "⚠ 本機儲存失敗";
       chip.className = "sync-chip error";
@@ -377,10 +388,54 @@
   }
 
   // ---------------------------------------------------------------- cloud sync
-  const pushSoon = U.debounce(pushDirty, 1500);
+  // Edits stay in this browser until the user presses "同步到雲端" and confirms; nothing is uploaded automatically.
+
+  /** Local edits not yet uploaded: changed PFAMs, deleted PFAMs, holiday calendars. */
+  function localChanges() {
+    const ids = [...Store.dirty].filter((id) => Store.pfam(id));
+    const deleted = Store.data.deleted || [];
+    const calendars = !!Store.data.calendarsDirty;
+    return { ids, deleted, calendars, count: ids.length + deleted.length + (calendars ? 1 : 0) };
+  }
+
+  function describeChanges(ch) {
+    const parts = [];
+    if (ch.ids.length) parts.push(`${ch.ids.length} 個 PFAM 有修改`);
+    if (ch.deleted.length) parts.push(`刪除 ${ch.deleted.length} 個 PFAM`);
+    if (ch.calendars) parts.push("廠區假日有修改");
+    return parts.join("、");
+  }
+
+  let hadChanges = false;
+  /** Tell the user once when the page goes from "same as cloud" to "has local edits". */
+  function noteLocalChange() {
+    const has = Remote.active && localChanges().count > 0;
+    if (has && !hadChanges)
+      toast("修改只存在這個瀏覽器，尚未同步到雲端，其他人看不到。要分享請按上方「同步到雲端」。", "", [{ label: "同步到雲端…", run: syncToCloud }]);
+    hadChanges = has;
+  }
+
+  async function syncToCloud() {
+    const ch = localChanges();
+    if (!ch.count) return toast("沒有需要同步的本機修改");
+    if (!sync.loaded) return toast("尚未連上雲端，無法同步，請稍後再試。", "error", [{ label: "重試連線", run: () => cloudLoad() }]);
+    const lines = [
+      ...ch.ids.map((id) => "・" + Store.pfam(id).sheet),
+      ...(ch.deleted.length ? [`・刪除 ${ch.deleted.length} 個 PFAM`] : []),
+      ...(ch.calendars ? ["・廠區假日設定"] : []),
+    ];
+    const shown = lines.slice(0, 15).join("\n") + (lines.length > 15 ? `\n…另外 ${lines.length - 15} 項` : "");
+    if (!confirm(`將以下本機修改上傳到雲端（Google Sheet）？\n上傳後其他人重新整理就會看到。\n\n${shown}`)) return;
+    await pushDirty();
+    if (sync.state === "synced") toast("✓ 已同步到雲端");
+  }
+
+  function discardLocal() {
+    if (!confirm("捨棄這個瀏覽器所有尚未同步的修改，改為載入雲端最新版本？\n此動作無法復原。")) return;
+    cloudLoad({ force: true });
+  }
 
   async function pushDirty() {
-    // Edits made on the local fallback wait until the cloud copy has been read (retrySync handles that load)
     if (!Remote.active || !sync.loaded) return;
     const ids = [...Store.dirty].filter((id) => Store.pfam(id));
     const deleted = Store.data.deleted || [];
@@ -413,7 +468,6 @@
       }
       Store.persist();
       setSync("synced");
-      if (Store.dirty.size) pushSoon();
     } catch (err) {
       setSync("error", err.message);
     }
@@ -429,7 +483,7 @@
       Store.markClean([id]);
       Store.persist();
       setSync("synced");
-      pushSoon();
+      pushDirty(); // finish the rest of the confirmed sync
     } catch (err) {
       setSync("error", err.message);
     }
@@ -453,11 +507,11 @@
         toast("雲端試算表目前是空的。可在「雲端同步」中上傳本機資料。", "", [{ label: "開啟設定", run: openCloud }]);
         return;
       }
-      if (!force && Store.dirty.size) {
-        const ok = confirm(`本機有 ${Store.dirty.size} 個 PFAM 的修改尚未同步到雲端。\n\n確定：以雲端版本覆蓋本機\n取消：保留本機，稍後上傳`);
+      const ch = localChanges();
+      if (!force && ch.count) {
+        const ok = confirm(`這個瀏覽器有尚未同步的本機修改（${describeChanges(ch)}）。\n\n確定：捨棄本機修改，改用雲端最新版本\n取消：保留本機修改（之後可按「同步到雲端」上傳）`);
         if (!ok) {
           setSync("synced");
-          pushSoon();
           return;
         }
       }
@@ -467,15 +521,13 @@
     } catch (err) {
       setSync("error", err.message);
       if (sync.loaded) toast("雲端載入失敗：" + err.message, "error");
-      else toast("無法連線雲端，目前顯示本機備份資料（可能不是最新）。修改會先存在本機，恢復連線後自動上傳。", "error", [{ label: "重試", run: () => cloudLoad() }]);
+      else toast("無法連線雲端，目前顯示本機備份資料（可能不是最新）。", "error", [{ label: "重試", run: () => cloudLoad() }]);
     }
   }
 
-  /** While the cloud is unreachable, keep retrying: first the initial load, then any pending uploads. */
+  /** While the cloud has never been reached this session, keep retrying the initial load (uploads are always manual). */
   function retrySync() {
-    if (!Remote.active || sync.state !== "error") return;
-    if (sync.loaded) pushDirty();
-    else cloudLoad();
+    if (Remote.active && sync.state === "error" && !sync.loaded) cloudLoad();
   }
 
   // ---------------------------------------------------------------- dialogs
@@ -563,7 +615,7 @@
       if (reason === "data") {
         renderSoon("list", "detail", "status");
         if (detail && (detail.replaced || detail.deleted)) renderSoon("filters");
-        if (Remote.active) pushSoon();
+        noteLocalChange();
       }
       if (reason === "ui") {
         if (detail && ("showHidden" in detail || "filters" in detail)) renderSoon("filters");
@@ -764,6 +816,9 @@
       Store.setUi({ theme: order[(order.indexOf(Store.ui.theme) + 1) % 3] });
     });
     $("#syncChip").addEventListener("click", openCloud);
+    $("#btnSync").addEventListener("click", syncToCloud);
+    $("#bannerSync").addEventListener("click", syncToCloud);
+    $("#bannerDiscard").addEventListener("click", discardLocal);
     const menu = $("#dataMenu");
     $("#btnData").addEventListener("click", (ev) => {
       ev.stopPropagation();
