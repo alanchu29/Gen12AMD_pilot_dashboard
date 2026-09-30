@@ -82,19 +82,23 @@
   }
 
   // ---------------------------------------------------------------- status bar
-  const sync = { state: "local", at: null, msg: "" };
+  // loaded: the cloud copy has been read at least once this session (until then, the page shows the local fallback)
+  const sync = { state: "local", at: null, msg: "", loaded: false };
   function renderStatus() {
     const chip = $("#syncChip");
+    const offline = sync.state === "error" && !sync.loaded;
     const labels = {
       local: "本機模式",
       syncing: "同步中…",
       synced: "雲端已同步" + (sync.at ? " · " + sync.at.toTimeString().slice(0, 5) : ""),
-      error: "同步失敗",
+      error: offline ? "離線 · 本機備份" : "同步失敗 · 稍後重試",
       conflict: "雲端版本衝突",
     };
     chip.textContent = labels[sync.state];
     chip.className = "sync-chip " + sync.state;
-    chip.title = sync.msg || (sync.state === "local" ? "資料存在此瀏覽器（localStorage）。點擊設定 Google Sheet 雲端同步。" : "");
+    chip.title =
+      (offline ? "無法連線雲端，目前顯示此瀏覽器上次保存的資料（可能不是最新）。修改會先存在本機，恢復連線後自動上傳。\n" : "") +
+      (sync.msg || (sync.state === "local" ? "資料存在此瀏覽器（localStorage）。點擊設定 Google Sheet 雲端同步。" : ""));
     if (Store.saveError) {
       chip.textContent = "⚠ 本機儲存失敗";
       chip.className = "sync-chip error";
@@ -378,7 +382,8 @@
   const pushSoon = U.debounce(pushDirty, 1500);
 
   async function pushDirty() {
-    if (!Remote.active) return;
+    // Edits made on the local fallback wait until the cloud copy has been read (retrySync handles that load)
+    if (!Remote.active || !sync.loaded) return;
     const ids = [...Store.dirty].filter((id) => Store.pfam(id));
     const deleted = Store.data.deleted || [];
     if (!ids.length && !deleted.length && !Store.data.calendarsDirty) return;
@@ -444,6 +449,7 @@
     setSync("syncing");
     try {
       const data = await Remote.loadAll();
+      sync.loaded = true;
       if (!data.pfams || !data.pfams.length) {
         setSync("synced");
         toast("雲端試算表目前是空的。可在「雲端同步」中上傳本機資料。", "", [{ label: "開啟設定", run: openCloud }]);
@@ -462,8 +468,16 @@
       renderSoon("filters", "list", "detail", "status");
     } catch (err) {
       setSync("error", err.message);
-      toast("雲端載入失敗：" + err.message, "error");
+      if (sync.loaded) toast("雲端載入失敗：" + err.message, "error");
+      else toast("無法連線雲端，目前顯示本機備份資料（可能不是最新）。修改會先存在本機，恢復連線後自動上傳。", "error", [{ label: "重試", run: () => cloudLoad() }]);
     }
+  }
+
+  /** While the cloud is unreachable, keep retrying: first the initial load, then any pending uploads. */
+  function retrySync() {
+    if (!Remote.active || sync.state !== "error") return;
+    if (sync.loaded) pushDirty();
+    else cloudLoad();
   }
 
   // ---------------------------------------------------------------- dialogs
@@ -855,7 +869,7 @@
       Remote.saveConfig({ enabled: false });
       setSync("local");
       $("#dlgCloud").close();
-      toast("已切換為本機模式");
+      toast(Remote.builtIn ? "已暫時切換為本機模式，重新整理頁面會回到雲端" : "已切換為本機模式");
     });
 
     // holidays dialog
@@ -903,6 +917,9 @@
     renderSoon("filters", "list", "detail", "status");
     applyShareLink();
     if (Remote.active) cloudLoad();
+    setInterval(retrySync, 60000);
+    window.addEventListener("online", retrySync);
+    document.addEventListener("visibilitychange", () => !document.hidden && retrySync());
   }
 
   window.App = { toast, renderSoon: () => renderSoon("detail"), focusRow, isShowing };

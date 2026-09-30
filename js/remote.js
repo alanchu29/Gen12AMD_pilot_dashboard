@@ -6,17 +6,29 @@
 (function () {
   const LS_REMOTE = "npiGantt.remote.v1";
   const TIMEOUT_MS = 30000;
+  // Built-in Apps Script web app URL (ending in /exec). When set, every page load starts in cloud mode
+  // and the browser's local copy (last cloud snapshot or seed) is only a fallback while the cloud is unreachable.
+  // Leave empty to default to local mode.
+  const DEFAULT_URL = "";
 
   function loadConfig() {
+    let saved = {};
     try {
-      return Object.assign({ url: "", key: "", enabled: false }, JSON.parse(localStorage.getItem(LS_REMOTE) || "{}"));
+      saved = JSON.parse(localStorage.getItem(LS_REMOTE) || "{}");
     } catch {
-      return { url: "", key: "", enabled: false };
+      /* unreadable settings: fall back to defaults */
     }
+    const config = Object.assign({ url: "", key: "", enabled: false }, saved);
+    if (DEFAULT_URL) {
+      config.url = config.url || DEFAULT_URL;
+      config.enabled = true; // switching to local mode only lasts until the next page load
+    }
+    return config;
   }
 
   const Remote = {
     config: loadConfig(),
+    builtIn: !!DEFAULT_URL,
 
     saveConfig(patch) {
       Object.assign(this.config, patch);

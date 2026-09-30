@@ -222,7 +222,11 @@ main { padding: 20px 24px 64px; display: grid; gap: 20px; max-width: 1800px; mar
 .panel-head h2 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
 .panel-head h2::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: var(--brand); }
 .count { font-size: 13px; font-weight: 400; color: var(--muted); }
-.empty-detail { text-align: center; color: var(--muted); padding: 40px 20px; border-style: dashed; background: transparent; box-shadow: none; }
+.pick-hint {
+  margin: 0 0 12px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+  background: var(--brand-wash); color: var(--brand-ink); border-left: 4px solid var(--brand);
+}
+.pick-hint[hidden] { display: none; }
 .empty-note { padding: 28px; text-align: center; color: var(--muted); }
 .hint { font-size: 12px; color: var(--muted); margin: 8px 2px 0; }
 
