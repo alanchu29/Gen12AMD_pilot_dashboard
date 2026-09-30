@@ -72,7 +72,7 @@ node tools/verify_importer.js "path/to/new.xlsx"  # 瀏覽器匯入器 vs Python
 ### A. GitHub Pages（網頁）
 
 1. 在 GitHub 建立 repo，把本專案 push 上去（`index.html` 在 repo 根目錄）。
-2. repo → Settings → Pages → Build and deployment：Source 選 **GitHub Actions**。部署由 `.github/workflows/pages.yml` 執行，會在 `index.html` 的每個 css/js 網址加上 `?v=<commit>`，因此每次部署後重新整理一定會載入新檔案（GitHub Pages 對 css/js 的快取是 10 分鐘）。
+2. repo → Settings → Pages → Build and deployment：Source 選 **Deploy from a branch**，Branch 選 `main`、資料夾 `/ (root)` → Save。（GitHub Pages 對 css/js 的快取是 10 分鐘：更新後其他人重新整理最慢 10 分鐘才會拿到新版，急用可按 Ctrl+F5。）
 3. 約 1 分鐘後網址會出現在同一頁（`https://<帳號>.github.io/<repo>/`）。之後每次 push 都會自動更新。
 
 ### B. Google Sheet + Apps Script（共用資料）
