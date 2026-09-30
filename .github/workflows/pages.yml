@@ -1,0 +1,44 @@
+# Deploy to GitHub Pages with cache-busted asset URLs.
+# Pages serves css/js with max-age=600, so a normal reload can keep old files for 10 minutes;
+# stamping ?v=<commit> on every css/js reference in index.html makes each deploy load fresh files.
+# Requires: repo Settings > Pages > Build and deployment > Source = "GitHub Actions".
+name: Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stamp asset URLs with the commit
+        run: |
+          v="${GITHUB_SHA::8}"
+          sed -i -E "s#(src|href)=\"((css|js|data)/[^\"?]+\.(css|js))\"#\1=\"\2?v=$v\"#g" index.html
+          echo "stamped $(grep -o "?v=$v" index.html | wc -l) references with v=$v"
+          grep -q "js/app.js?v=$v" index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
