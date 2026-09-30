@@ -108,11 +108,13 @@
         const values = [...new Set(pool.map((t) => t[k]).filter(Boolean))].sort();
         if (values.length < 2) return "";
         const sel = ui.filters[k] || [];
-        return `<div class="chip-group" role="group" aria-label="${label}"><span class="chip-label">${label}</span>${values
+        const all = `<button class="chip all${sel.length ? "" : " on"}" data-fk="${k}" data-fv="" aria-pressed="${!sel.length}">全部</button>`;
+        return `<div class="chip-group" role="group" aria-label="${label}"><span class="chip-label">${label}</span>${all}${values
           .map((v) => `<button class="chip${sel.includes(v) ? " on" : ""}" data-fk="${k}" data-fv="${U.esc(v)}" aria-pressed="${sel.includes(v)}">${U.esc(v)}</button>`)
           .join("")}</div>`;
       }).join("");
       const hiddenCount = Store.data.pfams.filter((p) => p.hidden).length;
+      const filtered = Object.values(ui.filters).some((a) => a && a.length) || ui.search;
       root.innerHTML = `
         <div class="filter-row">
           <div class="seg view-seg" role="group" aria-label="總覽檢視">
@@ -120,8 +122,11 @@
             <button type="button" data-pfview="sheet" aria-pressed="${ui.pfView === "sheet"}" title="每個 Excel 分頁一列">Excel 分頁</button>
           </div>
           <label class="search"><span aria-hidden="true">⌕</span><input id="pfSearch" type="search" placeholder="搜尋 PFAM / 標題" value="${U.esc(ui.search)}" aria-label="搜尋 PFAM"></label>
-          ${groups}
         </div>
+        ${groups ? `<div class="filter-box">
+          <div class="filter-box-head"><b>⏷ 篩選</b><span>點選即套用，同一類可複選</span>${filtered ? `<button class="link" id="pfClear">✕ 清除篩選</button>` : ""}</div>
+          <div class="filter-groups">${groups}</div>
+        </div>` : ""}
         <div class="filter-row sub">
           <label class="sel">排序
             <select id="pfSort">
@@ -132,7 +137,6 @@
           </label>
           <label class="toggle"><input type="checkbox" id="pfFull"${ui.pfFullRange ? " checked" : ""}> 顯示完整時間軸<span id="pfRangeNote" class="muted"></span></label>
           ${hiddenCount ? `<label class="toggle"><input type="checkbox" id="pfHidden"${ui.showHidden ? " checked" : ""}> 顯示 Excel 隱藏分頁（${hiddenCount} 個舊版本／情境）</label>` : ""}
-          ${Object.values(ui.filters).some((a) => a && a.length) || ui.search ? `<button class="link" id="pfClear">清除篩選</button>` : ""}
           <span class="legend">
             <span><i class="lg-ph ph-prep"></i>準備期</span>
             <span class="lg-strong"><i class="lg-ph ph-build"></i>建置測試</span>
@@ -236,24 +240,18 @@
     renderSummary(items) {
       const el = U.$("#pfSummary");
       if (!el) return;
-      const count = {};
-      for (const it of items) count[it.phase.key] = (count[it.phase.key] || 0) + 1;
-      const order = ["prep", "build", "ship", "done", "future"];
-      const names = { future: "未開始", prep: "準備中", build: "建置測試中", ship: "出貨運輸中", done: "已到貨" };
       const late = items.filter((it) => it.key.dockDelta > 0).length;
-      el.innerHTML =
-        order.filter((k) => count[k]).map((k) => `<span class="sum ph-${k}"><b>${count[k]}</b>${names[k]}</span>`).join("") +
-        (late ? `<span class="sum late-sum"><b>${late}</b>Dock 較基準延後</span>` : "");
+      el.innerHTML = late ? `<span class="sum late-sum"><b>${late}</b>Dock 較基準延後</span>` : "";
     },
 
-    /** Second line of a row: status, then the SKU (the thing to notice), site, and build for single sheets. */
+    /** Second line of a row: the SKU (the thing to notice), site, and build for single sheets. */
     tagsHtml(it) {
       const { tags } = it;
       const sku = tags.sku ? `<span class="tag sku">${U.esc(tags.sku)}</span>` : "";
       const site = tags.site ? `<span class="tag site-${tags.site}">${U.esc(tags.site)}</span>` : "";
       // Groups show "1st + 2nd" next to their name instead.
       const ph = it.kind !== "group" && tags.phase && tags.phase !== "其他" ? `<span class="tag">${U.esc(tags.phase)}</span>` : "";
-      return `<span class="status ph-${it.phase.key}">${it.phase.icon} ${it.phase.label}</span>${sku}${site}${ph}`;
+      return `${sku}${site}${ph}`;
     },
 
     rowHtml(it, ctx, member) {

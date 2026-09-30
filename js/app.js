@@ -192,7 +192,6 @@
     if (v.mode === "group") {
       const pb = v.merged.perBuild;
       const key = { build: pb[0].key.build, etd: pb[0].key.etd, dock: pb[pb.length - 1].key.dock };
-      const phase = U.phaseOf(key, gs.span, today);
       const tg = U.tags(v.g.members[0].p);
       const links = v.g.members
         .map((m) => `<button class="sheet-link" data-open="${m.p.id}" title="只看這個分頁"><span class="build-pill">${U.esc(m.build)}</span>${U.esc(m.p.sheet)}</button>`)
@@ -202,13 +201,12 @@
           <div class="dh-text">
             <h2>${U.esc(v.g.name)} <span class="merge-note big">1st + 2nd 合併檢視</span></h2>
             <div class="dh-sub">合併 ${v.g.members.length} 個 Excel 分頁：${links}</div>
-            <div class="dh-chips"><span class="status ph-${phase.key}">${phase.icon} ${phase.label}</span>${tagChips(tg, `<span class="tag builds">${v.g.members.map((m) => m.build).join(" + ")}</span>`)}</div>
+            <div class="dh-chips">${tagChips(tg, `<span class="tag builds">${v.g.members.map((m) => m.build).join(" + ")}</span>`)}</div>
           </div>
         </div>`;
     } else {
       const p = v.pfam;
       const key = U.keyDates(p, gs);
-      const phase = U.phaseOf(key, gs.span, today);
       const tg = U.tags(p);
       const grp = Groups.groupOfPfam(p.id);
       const meta = [["Lead", p.meta.lead], ["MDM", p.meta.mdm], ["L10 PN", p.meta.l10pn], ["L11 PN", p.meta.l11pn]]
@@ -220,7 +218,7 @@
           <div class="dh-text">
             <h2>${U.esc(p.sheet)}</h2>
             <div class="dh-sub">${U.esc(p.title)}${grp ? ` <button class="sheet-link" data-open="${grp.id}">屬於 ${U.esc(grp.name)} → 看 1st + 2nd 合併</button>` : ""}</div>
-            <div class="dh-chips"><span class="status ph-${phase.key}">${phase.icon} ${phase.label}</span>${tagChips(tg, tg.phase !== "其他" ? `<span class="tag">${U.esc(tg.phase)}</span>` : "")}<span class="tag outline">假日曆 ${U.esc(p.calendar)}</span>${meta ? `<span class="dh-meta">${meta}</span>` : ""}</div>
+            <div class="dh-chips">${tagChips(tg, tg.phase !== "其他" ? `<span class="tag">${U.esc(tg.phase)}</span>` : "")}<span class="tag outline">假日曆 ${U.esc(p.calendar)}</span>${meta ? `<span class="dh-meta">${meta}</span>` : ""}</div>
           </div>
           <div class="dh-actions">
             <button class="btn" id="btnDup" title="複製成新的情境，方便試算不同排程">複製為新情境</button>
@@ -596,7 +594,8 @@
         const f = JSON.parse(JSON.stringify(Store.ui.filters));
         const arr = f[c.dataset.fk] || [];
         const v = c.dataset.fv;
-        f[c.dataset.fk] = arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v);
+        // "全部" (empty value) clears the group
+        f[c.dataset.fk] = !v ? [] : arr.includes(v) ? arr.filter((x) => x !== v) : arr.concat(v);
         Store.setUi({ filters: f });
       }
       if (ev.target.id === "pfClear") {
