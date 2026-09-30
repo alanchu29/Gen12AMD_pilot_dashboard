@@ -406,6 +406,27 @@
     return parts.join("、");
   }
 
+  // Full-screen "please wait" while the cloud is read or written. Loads can be skipped after 10 s
+  // (the page keeps showing this browser's copy and swaps in the cloud data when it arrives).
+  let blockerTimer = null;
+  function showBlocker(msg, { skippable } = {}) {
+    const t0 = Date.now();
+    $("#blockerMsg").textContent = msg;
+    $("#blockerTime").textContent = "";
+    $("#blockerSkip").hidden = true;
+    $("#blocker").hidden = false;
+    clearInterval(blockerTimer);
+    blockerTimer = setInterval(() => {
+      const s = Math.round((Date.now() - t0) / 1000);
+      $("#blockerTime").textContent = `（已等候 ${s} 秒）`;
+      if (skippable && s >= 10) $("#blockerSkip").hidden = false;
+    }, 1000);
+  }
+  function hideBlocker() {
+    clearInterval(blockerTimer);
+    $("#blocker").hidden = true;
+  }
+
   let hadChanges = false;
   /** Tell the user once when the page goes from "same as cloud" to "has local edits". */
   function noteLocalChange() {
@@ -426,7 +447,12 @@
     ];
     const shown = lines.slice(0, 15).join("\n") + (lines.length > 15 ? `\n…另外 ${lines.length - 15} 項` : "");
     if (!confirm(`將以下本機修改上傳到雲端（Google Sheet）？\n上傳後其他人重新整理就會看到。\n\n${shown}`)) return;
-    await pushDirty();
+    showBlocker("正在上傳到雲端…");
+    try {
+      await pushDirty();
+    } finally {
+      hideBlocker();
+    }
     if (sync.state === "synced") toast("✓ 已同步到雲端");
   }
 
@@ -496,11 +522,12 @@
     renderSoon("status");
   }
 
-  async function cloudLoad({ force } = {}) {
+  async function cloudLoad({ force, quiet } = {}) {
     if (!Remote.active) return;
     setSync("syncing");
+    if (!quiet) showBlocker("正在同步雲端資料…", { skippable: true });
     try {
-      const data = await Remote.loadAll();
+      const data = await Remote.loadAll().finally(hideBlocker);
       sync.loaded = true;
       if (!data.pfams || !data.pfams.length) {
         setSync("synced");
@@ -527,7 +554,7 @@
 
   /** While the cloud has never been reached this session, keep retrying the initial load (uploads are always manual). */
   function retrySync() {
-    if (Remote.active && sync.state === "error" && !sync.loaded) cloudLoad();
+    if (Remote.active && sync.state === "error" && !sync.loaded) cloudLoad({ quiet: true });
   }
 
   // ---------------------------------------------------------------- dialogs
@@ -819,6 +846,7 @@
     $("#btnSync").addEventListener("click", syncToCloud);
     $("#bannerSync").addEventListener("click", syncToCloud);
     $("#bannerDiscard").addEventListener("click", discardLocal);
+    $("#blockerSkip").addEventListener("click", hideBlocker);
     const menu = $("#dataMenu");
     $("#btnData").addEventListener("click", (ev) => {
       ev.stopPropagation();

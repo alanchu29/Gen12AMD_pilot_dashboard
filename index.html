@@ -39,6 +39,15 @@
     </div>
   </header>
 
+  <div class="blocker" id="blocker" role="alertdialog" aria-modal="true" aria-labelledby="blockerMsg" hidden>
+    <div class="blocker-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <p class="blocker-msg" id="blockerMsg">正在同步雲端資料…</p>
+      <p class="blocker-sub">Google 雲端有時需要 10–30 秒，請稍候<span id="blockerTime"></span></p>
+      <button class="link" id="blockerSkip" type="button" hidden>先看本機資料，不等候</button>
+    </div>
+  </div>
+
   <main>
     <div class="local-banner" id="localBanner" role="status" hidden>
       <span id="localBannerMsg"></span>
