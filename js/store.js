@@ -30,7 +30,8 @@
     search: "",
     filters: { gen: [], site: [], phase: [], sku: [] },
     showHidden: false,
-    sort: "order",
+    sort: "start", // L10 Build date
+    uiRev: 2, // bump to migrate saved UI settings when a default changes (see init)
     zoom: "week",
     colorBy: "owner",
     showDeps: false,
@@ -60,7 +61,10 @@
     init() {
       const saved = lsGet(LS_DATA);
       this.data = saved && saved.schema === 1 && saved.pfams ? saved : clone(window.NPI_SEED);
-      this.ui = Object.assign(clone(DEFAULT_UI), lsGet(LS_UI) || {});
+      const savedUi = lsGet(LS_UI) || {};
+      this.ui = Object.assign(clone(DEFAULT_UI), savedUi);
+      if ((savedUi.uiRev || 1) < 2) this.ui.sort = DEFAULT_UI.sort; // rev 2: default sort became L10 Build
+      this.ui.uiRev = DEFAULT_UI.uiRev;
       this.ui.filters = Object.assign(clone(DEFAULT_UI.filters), this.ui.filters || {});
       this.dirty = new Set(lsGet(LS_DIRTY) || []);
       if (this.ui.selectedId && !this.pfam(this.ui.selectedId)) this.ui.selectedId = null;

@@ -494,7 +494,7 @@
     if (!GAS_RE.test(gas)) return toast("分享連結裡的 Apps Script 網址格式不正確", "error");
     if (Remote.config.url !== gas || !Remote.config.enabled) {
       Remote.saveConfig({ url: gas, enabled: true });
-      toast("已從分享連結啟用 Google Sheet 同步（需要編輯請到「雲端同步」填入 Edit key）");
+      toast("已從分享連結啟用 Google Sheet 同步");
     }
   }
 

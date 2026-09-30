@@ -9,7 +9,7 @@
   // Built-in Apps Script web app URL (ending in /exec). When set, every page load starts in cloud mode
   // and the browser's local copy (last cloud snapshot or seed) is only a fallback while the cloud is unreachable.
   // Leave empty to default to local mode.
-  const DEFAULT_URL = "";
+  const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbz7EmhkOt6uxBDPmyvV1ric4cXfnBAWvZUCkNN4zOOA-HwOYY__6CdNsRjZWHsIUPDa/exec";
 
   function loadConfig() {
     let saved = {};
