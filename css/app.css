@@ -60,6 +60,7 @@
   --warn: #b77f00;
   --cd-chg: #7c3aed; /* differs from the cloud copy */
   --cd-new: #0f8a7e;
+  --ld-col: #8593a8; /* load chart columns: neutral, apart from the task-bar colors */
 
   --label-w: 420px;
   --radius: 14px;
@@ -93,6 +94,7 @@
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --ph-prep: #29496f; --ph-build: #5a9cff; --ph-ship: #4d3a31; --ph-ship-mark: #b07a5c; --ph-tail: #2c3a55;
     --late: #ff7a7a; --early: #3ccf3c; --warn: #fab219; --cd-chg: #b794ff; --cd-new: #4fd1c5;
+    --ld-col: #66758f;
     --st-future-bg: #1e2b47; --st-future: #a4b0c4;
     --st-prep-bg: #1a3358;   --st-prep: #9cc3f5;
     --st-build-bg: #173f7a;  --st-build: #cfe2ff;
@@ -119,6 +121,7 @@
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --ph-prep: #29496f; --ph-build: #5a9cff; --ph-ship: #4d3a31; --ph-ship-mark: #b07a5c; --ph-tail: #2c3a55;
   --late: #ff7a7a; --early: #3ccf3c; --warn: #fab219; --cd-chg: #b794ff; --cd-new: #4fd1c5;
+  --ld-col: #66758f;
   --st-future-bg: #1e2b47; --st-future: #a4b0c4;
   --st-prep-bg: #1a3358;   --st-prep: #9cc3f5;
   --st-build-bg: #173f7a;  --st-build: #cfe2ff;
@@ -854,6 +857,7 @@ select.in.cal { min-width: 104px; }
 .ld-pin .toggle { color: var(--hl-ink); }
 .ld-pin .toggle input { accent-color: var(--hl); }
 .lg-over { width: 16px; height: 4px; border-radius: 1px; background: var(--late); }
+.lg-load { width: 14px; height: 9px; border-radius: 2px; background: var(--ld-col); }
 .lg-done { width: 14px; height: 9px; border-radius: 2px; background: var(--s1); opacity: 0.4; }
 .ld-scroll { max-height: calc(100vh - 120px); }
 .g-corner.ld-corner { display: block; padding: 0; }
@@ -863,7 +867,7 @@ select.in.cal { min-width: 104px; }
 .ld-caplab { position: absolute; right: 30px; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 4px; background: var(--late); color: #fff; font-weight: 750; }
 .ld-plot { fill: var(--surface); }
 .ld-ygrid { stroke: var(--grid); stroke-dasharray: 2 3; }
-.ld-col { fill: var(--brand); opacity: 0.75; }
+.ld-col { fill: var(--ld-col); }
 .ld-col.over { fill: var(--late); opacity: 0.9; }
 .ld-num { font-size: 10.5px; font-weight: 650; fill: var(--ink-2); text-anchor: middle; pointer-events: none; }
 .ld-num.over { fill: var(--late); font-weight: 800; }

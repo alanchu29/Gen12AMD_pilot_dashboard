@@ -353,21 +353,21 @@
         return;
       }
 
-      // ---- time range: like the portfolio, start 2 months before today unless the full range is asked for
+      // ---- time range: start 2 weeks before today unless the full range is asked for
       const zoomKey = ZOOM[ui.loadZoom] ? ui.loadZoom : "week";
       const zoom = ZOOM[zoomKey];
       const ppd = zoom.ppd;
-      const cutoff = addMonths(monthStart(today), -2);
+      const cutoff = today - 14;
       const clipped = !ui.loadFull && m.hi >= cutoff && m.lo < cutoff;
       let r0 = clipped ? cutoff : m.lo;
       let r1 = m.hi + zoom.pad * 2;
       if (zoomKey === "month") {
         r0 = monthStart(r0);
         r1 = addMonths(r1, 1) - 1;
-      } else {
-        if (!clipped) r0 -= zoom.pad;
+      } else if (!clipped) {
+        r0 -= zoom.pad;
         r0 -= (E.weekday(r0) + 6) % 7; // back to Monday
-      }
+      } // clipped: start exactly 2 weeks back
       const W = Math.ceil((r1 - r0 + 1) * ppd);
       const x = (day) => (day - r0) * ppd;
 
@@ -394,7 +394,7 @@
       }
       $("#ldCount").textContent = `${listedUnits} 個 PFAM · ${listed} 個 task`;
       $("#ldRangeNote").textContent = clipped
-        ? `（時間軸從 ${U.fmt(cutoff).slice(0, 7)} 開始${before ? `，之前已結束的 ${before} 個 task 未列出` : ""}）`
+        ? `（時間軸從 ${U.fmt(cutoff)}（今天前兩週）開始${before ? `，之前已結束的 ${before} 個 task 未列出` : ""}）`
         : "";
 
       // ---- KPIs
@@ -456,7 +456,7 @@
               <label class="toggle"><input type="checkbox" data-ld="pinOnly"${pinOnly ? " checked" : ""}> 只看這天進行中的 task</label>
               <button type="button" class="link" data-ld="unpin">✕ 取消標記</button></div>`
           : `<span class="muted">點負載圖上的任一天，可標出當天進行中的 task</span>`) +
-        `<span class="legend">${m.combos.map((c) => `<span><i class="sw s${slotOf(c)}"></i>${U.esc(c)}</span>`).join("")}` +
+        `<span class="legend"><span><i class="lg-load"></i>同時進行的 PFAM 數</span>${m.combos.map((c) => `<span><i class="sw s${slotOf(c)}"></i>${U.esc(c)}</span>`).join("")}` +
         (cap ? `<span><i class="lg-over"></i>超過上限的期間</span>` : "") +
         `<span><i class="lg-ms"></i>單日任務</span><span><i class="lg-done"></i>已完成</span></span>`;
 

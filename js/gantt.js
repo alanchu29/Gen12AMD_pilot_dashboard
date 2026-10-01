@@ -367,6 +367,8 @@
           const d = new Date(m * 86400000);
           const xm = x(Math.max(m, r0));
           el("line", { x1: x(m) + 0.5, x2: x(m) + 0.5, y1: 0, y2: 22, class: "gridline" }, top);
+          // A few days of a month cut off at the left edge: no room for its label next to the following one.
+          if (m < r0 && (addMonths(m, 1) - r0) * ppd < 70) continue;
           text(top, xm + 6, 16, `${d.getUTCFullYear()}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`, "tick strong");
         }
         if (zoom === "day") {
