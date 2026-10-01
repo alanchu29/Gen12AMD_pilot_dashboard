@@ -136,6 +136,7 @@ const ctx = {
 };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, "../apps-script/Code.gs"), "utf8"), ctx);
+vm.runInContext("CACHE_CHUNK = 20000;", ctx); // small chunks, so the seed bundle exercises multi-chunk caching
 
 const post = (body) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(body) } }).text);
 const get = (params) => ctx.doGet({ parameter: params }).text;

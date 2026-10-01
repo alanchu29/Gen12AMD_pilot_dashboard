@@ -136,7 +136,7 @@
             </select>
           </label>
           <label class="toggle"><input type="checkbox" id="pfFull"${ui.pfFullRange ? " checked" : ""}> 顯示完整時間軸<span id="pfRangeNote" class="muted"></span></label>
-          ${hiddenCount ? `<label class="toggle"><input type="checkbox" id="pfHidden"${ui.showHidden ? " checked" : ""}> 顯示 Excel 隱藏分頁（${hiddenCount} 個舊版本／情境）</label>` : ""}
+          ${hiddenCount ? `<label class="toggle"><input type="checkbox" id="pfHidden"${ui.showHidden ? " checked" : ""}> 顯示已封存分頁（${hiddenCount} 個）</label>` : ""}
           <span class="legend">
             <span><i class="lg-ph ph-prep"></i>準備期</span>
             <span class="lg-strong"><i class="lg-ph ph-build"></i>建置測試</span>

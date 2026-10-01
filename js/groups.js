@@ -36,7 +36,7 @@
 
     /**
      * Top-level entries for the portfolio in sheet order: { kind: "group", id, name, members:[{p, build}] }
-     * or { kind: "pfam", p }. Hidden sheets never merge (they are old versions / scenarios).
+     * or { kind: "pfam", p }. Archived (hidden) sheets never merge.
      */
     entries(showHidden) {
       const byKey = new Map();

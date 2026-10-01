@@ -188,7 +188,7 @@ def convert_sheet(wv, wf, idx, fixture):
         "title": clean(wv["A1"].value),
         "site": site_text.lstrip("@") or calendar,
         "calendar": calendar,
-        "hidden": wv.sheet_state != "visible",
+        "hidden": False,
         "order": idx,
         "meta": {
             "l11pn": clean(wv["B2"].value),
@@ -213,11 +213,17 @@ def main():
     wbf = openpyxl.load_workbook(args.xlsx)
     calendars, holiday_cols = read_holidays(wbv["Holiday"])
 
-    pfams, fixture = [], {}
+    # Sheets hidden in Excel are old versions / scenarios: skip them, but let them keep their number
+    # so the ids of the visible sheets match what was imported before.
+    pfams, fixture, skipped, idx = [], {}, [], 0
     for ws in wbf.worksheets:
         if ws["B7"].value != "TASK":
             continue
-        pfams.append(convert_sheet(wbv[ws.title], ws, len(pfams) + 1, fixture))
+        idx += 1
+        if ws.sheet_state != "visible":
+            skipped.append(ws.title)
+            continue
+        pfams.append(convert_sheet(wbv[ws.title], ws, idx, fixture))
 
     now = dt.datetime.now().isoformat(timespec="seconds")
     seed = {
@@ -235,10 +241,9 @@ def main():
     with open(os.path.join(os.path.dirname(__file__), "_fixture.json"), "w", encoding="utf-8") as f:
         json.dump({"holidayCols": holiday_cols, "pfams": fixture}, f)
 
-    visible = sum(1 for p in pfams if not p["hidden"])
     ntasks = sum(1 for p in pfams for t in p["tasks"] if t["type"] == "task")
     missing = [(p["sheet"], t["name"], t["predMissing"]) for p in pfams for t in p["tasks"] if t.get("predMissing")]
-    print(f"PFAMs: {len(pfams)} ({visible} visible), tasks: {ntasks}")
+    print(f"PFAMs: {len(pfams)} (skipped {len(skipped)} hidden sheets), tasks: {ntasks}")
     for site, cal in calendars.items():
         print(f"  calendar {site}: {len(cal['holidays'])} holidays")
     if missing:

@@ -2,6 +2,7 @@
  * Excel -> dataset converter (browser port of tools/excel_to_seed.py; same output).
  * Takes a SheetJS workbook read with { cellFormula: true, cellNF: true, cellDates: false }.
  * Runs in the browser (window.Importer) and in Node (tools/verify_importer.js compares it to the Python seed).
+ * Sheets hidden in Excel are old versions / scenarios and are skipped entirely.
  */
 (function (root, factory) {
   const api = factory();
@@ -90,7 +91,7 @@
       return best;
     }
 
-    function convertSheet(name, ws, hidden, idx) {
+    function convertSheet(name, ws, idx) {
       const pfamCol = majorityCol(ws);
       const siteText = clean(val(ws, "G1"));
       const calendar = DATE_COL_TO_SITE[pfamCol] || (siteText.toUpperCase().includes("MX") ? "WYMX" : "WYLZ");
@@ -184,7 +185,7 @@
         title: clean(val(ws, "A1")),
         site: siteText.replace(/^@+/, "") || calendar,
         calendar,
-        hidden,
+        hidden: false,
         order: idx,
         meta: {
           l11pn: clean(val(ws, "B2")),
@@ -201,19 +202,24 @@
     const calendars = readHolidays(wb.Sheets.Holiday);
     const meta = (wb.Workbook && wb.Workbook.Sheets) || [];
     const pfams = [];
+    const skipped = [];
+    let idx = 0;
     wb.SheetNames.forEach((name, i) => {
       const ws = wb.Sheets[name];
       if (!ws || val(ws, "B7") !== "TASK") return;
-      const hidden = !!(meta[i] && meta[i].Hidden);
-      pfams.push(convertSheet(name, ws, hidden, pfams.length + 1));
+      // Hidden sheets still take a number, so ids stay what they were when they were imported too.
+      idx++;
+      if (meta[i] && meta[i].Hidden) skipped.push(name);
+      else pfams.push(convertSheet(name, ws, idx));
     });
-    if (!pfams.length) throw new Error("沒有找到任何排程分頁（第 7 列應為 # / TASK / LEAD …）");
+    if (!pfams.length) throw new Error(skipped.length ? "所有排程分頁都被隱藏了，沒有可匯入的分頁" : "沒有找到任何排程分頁（第 7 列應為 # / TASK / LEAD …）");
 
     return {
       schema: 1,
       source: { file: fileName, importedAt: new Date().toISOString().slice(0, 19) },
       calendars,
       pfams,
+      skipped,
     };
   }
 

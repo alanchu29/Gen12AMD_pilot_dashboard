@@ -215,7 +215,7 @@
       : "假日表沒有變動";
 
     d.querySelector(".imp-body").innerHTML = `
-      <p class="imp-file">📄 <b>${U.esc(plan.fileName)}</b>　${plan.incoming.pfams.length} 個排程分頁（${plan.incoming.pfams.filter((p) => !p.hidden).length} 個可見）</p>
+      <p class="imp-file">📄 <b>${U.esc(plan.fileName)}</b>　${plan.incoming.pfams.length} 個排程分頁${(plan.incoming.skipped || []).length ? `<span class="muted">（略過 ${plan.incoming.skipped.length} 個 Excel 隱藏分頁）</span>` : ""}</p>
       <div class="imp-chips">
         ${chip(conflicts.length, "需要決定", "c-conflict")}${chip(updates.length, "將更新", "c-update")}${chip(fresh.length, "新分頁", "c-new")}${chip(goneRows.length, "Excel 已無", "c-gone")}${chip(keepweb.length, "保留網頁修改", "c-keep")}${chip(same.length, "無變動", "c-same")}
       </div>
