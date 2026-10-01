@@ -343,6 +343,64 @@
     plan = null;
   }
 
+  /**
+   * "全部以新檔取代": the new Excel replaces every record. Web edits, web-only sheets, manual groups and
+   * previous baselines are dropped; only the id/version of same-named sheets is kept so cloud sync updates them.
+   */
+  function replaceAll() {
+    const incoming = plan.incoming;
+    undoSnapshot = { data: JSON.stringify(Store.data), selected: Store.ui.selectedId };
+    const byXl = new Map();
+    for (const p of Store.data.pfams) {
+      const k = Store.xlName(p);
+      if (k && !byXl.has(k)) byXl.set(k, p);
+    }
+    const usedIds = new Set(Store.data.pfams.map((p) => p.id));
+    const kept = new Set();
+    const result = incoming.pfams.map((np, i) => {
+      const p = clone(np);
+      const old = byXl.get(np.xlSheet);
+      if (old) {
+        p.id = old.id;
+        p.version = old.version;
+        kept.add(old.id);
+      } else if (usedIds.has(p.id)) p.id = U.uid("p");
+      usedIds.add(p.id);
+      p.order = i + 1;
+      return p;
+    });
+    const deleted = Store.data.pfams.filter((p) => !kept.has(p.id)).map((p) => p.id);
+    const next = {
+      ...Store.data,
+      source: { ...incoming.source, uploaded: true, previous: (Store.data.source || {}).file || "" },
+      calendars: incoming.calendars,
+      pfams: result,
+      deleted: [...new Set([...(Store.data.deleted || []), ...deleted])],
+      calendarsDirty: true,
+    };
+    Store.replaceData(next, { keepDirty: true });
+    for (const id of deleted) Store.dirty.delete(id);
+    for (const p of result) Store.dirty.add(p.id);
+    Store.markClean([]);
+    if (Store.ui.selectedId && !Store.ui.selectedId.startsWith("g:") && !Store.pfam(Store.ui.selectedId)) Store.setUi({ selectedId: null });
+    Store.emit("data", { replaced: true });
+    App.toast(`已用 ${plan.fileName} 取代全部資料：${result.length} 個分頁${deleted.length ? `，移除 ${deleted.length} 個舊分頁` : ""}`, "", [{ label: "復原匯入", run: undoImport }]);
+    plan = null;
+  }
+
+  function confirmReplace() {
+    const edited = Store.data.pfams.filter((p) => Store.webEdited(p)).length;
+    const webOnly = plan.webOnly.length;
+    const names = new Set(plan.incoming.pfams.map((p) => p.xlSheet));
+    const gone = Store.data.pfams.filter((p) => Store.fromExcel(p) && !names.has(Store.xlName(p))).length;
+    const lines = [`用「${plan.fileName}」取代目前全部資料？`, "", `・匯入 ${plan.incoming.pfams.length} 個分頁，內容完全以新檔為準`];
+    if (edited) lines.push(`・捨棄 ${edited} 個分頁在網頁上的修改`);
+    if (gone) lines.push(`・移除 ${gone} 個新檔沒有的分頁`);
+    if (webOnly) lines.push(`・移除 ${webOnly} 個在網頁上建立的分頁`);
+    lines.push("・基準日期、手動合併群組一併重設為新檔的狀態", "", "套用後可從提示訊息「復原匯入」；雲端模式下按「同步到雲端」後才會寫入 Google Sheet。");
+    return confirm(lines.join("\n"));
+  }
+
   function undoImport() {
     if (!undoSnapshot) return;
     const before = JSON.parse(undoSnapshot.data);
@@ -389,6 +447,11 @@
     $("#impApply").addEventListener("click", () => {
       d.close();
       apply();
+    });
+    $("#impReplace").addEventListener("click", () => {
+      if (!confirmReplace()) return;
+      d.close();
+      replaceAll();
     });
   }
 

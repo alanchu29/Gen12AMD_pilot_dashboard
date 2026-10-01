@@ -288,13 +288,25 @@
       }
       return p;
     },
-    /** Schedule content only (ignores ids, baselines, sync bookkeeping). */
+    /**
+     * Schedule content only (ignores ids, baselines, sync bookkeeping). Key order and empty values are
+     * normalised: the cloud returns fields in column order and fills in blanks/defaults.
+     */
     canon(p) {
-      const tasks = p.tasks.map((t) => {
-        const { base, ...rest } = t;
-        return rest;
+      const tasks = (p.tasks || []).map((t) => {
+        const o = {};
+        for (const k of Object.keys(t).sort()) {
+          const v = t[k];
+          if (k === "base" || v === "" || v === null || v === undefined || v === false) continue;
+          o[k] = v;
+        }
+        if (t.type === "task") for (const k of ["lag", "endAdj", "pct"]) o[k] = t[k] || 0;
+        return o;
       });
-      return JSON.stringify({ sheet: p.sheet, title: p.title, site: p.site, calendar: p.calendar, hidden: !!p.hidden, meta: p.meta, assumptions: p.assumptions || "", tasks });
+      const meta = {};
+      for (const k of Object.keys(p.meta || {}).sort()) if (p.meta[k]) meta[k] = p.meta[k];
+      const s = (v) => v || "";
+      return JSON.stringify({ sheet: s(p.sheet), title: s(p.title), site: s(p.site), calendar: s(p.calendar), hidden: !!p.hidden, meta, assumptions: s(p.assumptions), tasks });
     },
     webEdited(p) {
       const ref = this.excelRef(p);
@@ -309,6 +321,10 @@
       copy.hidden = false;
       copy.version = 0;
       copy.order = src.order + 0.5;
+      // A copy is a web-only sheet: it must not pair with the Excel sheet on the next import.
+      delete copy.xlSheet;
+      delete copy._xl;
+      delete copy.group;
       const idMap = new Map(copy.tasks.map((t) => [t.id, U.uid("t")]));
       for (const t of copy.tasks) {
         t.id = idMap.get(t.id);
