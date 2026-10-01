@@ -695,9 +695,12 @@
     });
     Load.bind({
       tip,
-      onOpen(pfamId, taskId) {
+      // A grouped PFAM opens the merged view with the task's build in the raw table.
+      onOpen(unitId, pfamId, taskId) {
         tip.hide();
-        Store.setUi({ page: "overview", selectedId: pfamId });
+        const patch = { page: "overview", selectedId: unitId };
+        if (unitId !== pfamId) patch.tableTab = Object.assign({}, Store.ui.tableTab, { [unitId]: pfamId });
+        Store.setUi(patch);
         focusRow(taskId);
       },
     });

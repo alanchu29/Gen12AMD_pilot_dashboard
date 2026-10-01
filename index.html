@@ -71,9 +71,11 @@
       <div class="ld-controls">
         <label class="ld-field">人力類別
           <input id="ldRoles" placeholder="STE, TE" autocomplete="off" title="以逗號分隔；負責欄包含任一類別的 task 都會列出"></label>
+        <label class="ld-field">另計任務名稱
+          <input id="ldNames" placeholder="例如 Golden rack, PoT" autocomplete="off" title="以逗號分隔；任務名稱包含這些字（不分大小寫）也列入負載，不論負責欄"></label>
         <label class="ld-field cap">負載上限
-          <input id="ldCap" type="number" min="1" step="1" inputmode="numeric" placeholder="—" title="同時進行的 task 超過這個數字就標紅">
-          <span class="muted">個 task 同時進行</span></label>
+          <input id="ldCap" type="number" min="1" step="1" inputmode="numeric" placeholder="—" title="同時進行的 PFAM 超過這個數字就標紅">
+          <span class="muted">個 PFAM 同時進行</span></label>
         <div class="seg" role="group" aria-label="時間刻度">
           <button type="button" data-ldzoom="day">日</button>
           <button type="button" data-ldzoom="week">週</button>
@@ -90,7 +92,7 @@
       <div id="ldKpis" class="kpis ld-kpis"></div>
       <div id="ldBar" class="ld-bar"></div>
       <div id="ldChart" class="gantt"></div>
-      <p class="hint">負載 = 當天同時進行（開始日 ≤ 當天 ≤ 結束日）的 task 數；已封存分頁不計入 · 滑過負載圖看當天有哪些 task，點一下可標出 · 雙擊任務開啟該 PFAM</p>
+      <p class="hint">負載 = 當天有符合 task 進行中（開始日 ≤ 當天 ≤ 結束日）的 PFAM 數，同一 PFAM（1st + 2nd 合併）多個 task 重疊只算 1；已封存分頁不計入 · 滑過負載圖看當天有哪些 task，點一下可標出 · 雙擊任務開啟該 PFAM</p>
     </section>
 
     <section class="panel" id="portfolio" aria-labelledby="pfTitle">

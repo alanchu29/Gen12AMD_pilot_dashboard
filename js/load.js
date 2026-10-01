@@ -1,12 +1,14 @@
 /*
  * Resource load (人力負載): every task whose LEAD names one of the checked roles (e.g. STE, TE), across all PFAMs,
- * on one timeline under a daily count of how many of them run at the same time.
- * Load = number of tasks with start <= day <= end. Archived sheets never count; 2nd-build sections that repeat the
- * 1st build ("沿用 1st", same rule as the merged Gantt) are left out unless asked for, so they are not counted twice.
+ * on one timeline under a daily count of how many PFAMs need that role at the same time.
+ * A PFAM is a portfolio group (1st + 2nd builds merged) or a standalone sheet. Load on a day = number of PFAMs with at
+ * least one matching task running (start <= day <= end): several tasks of one PFAM on the same day count once.
+ * Archived sheets never count; 2nd-build sections that repeat the 1st build ("沿用 1st", same rule as the merged Gantt)
+ * are left out unless asked for, so they are not counted twice.
  */
 (function () {
   const E = window.Engine;
-  const ROW_H = 26;
+  const ROW_H = 28; // must match .g-row height in app.css
   const BAR_H = 12;
   const AXIS_H = 46; // what Gantt.drawAxis draws
   const CHART_H = 132;
@@ -24,6 +26,7 @@
     ["sku", "SKU"],
   ];
   const TIP_TASKS = 14;
+  const NAME_COMBO = "依任務名稱"; // legend entry for tasks picked by name rather than by role
   const SVGNS = "http://www.w3.org/2000/svg";
 
   function el(tag, attrs, parent) {
@@ -47,75 +50,90 @@
   let pinOnly = false;
   let cur = null; // what the last render drew, for the event handlers
 
-  /** Sheets that are the 2nd+ build of a merged group: their non-volume sections repeat the 1st build. */
-  function laterBuilds() {
-    const out = new Set();
-    for (const e of Groups.entries(false)) if (e.kind === "group") e.members.slice(1).forEach((m) => out.add(m.p.id));
-    return out;
-  }
-
   function passes(tg) {
     const f = Store.ui.loadFilters;
     return FILTERS.every(([k]) => !f[k] || !f[k].length || f[k].includes(tg[k]));
   }
 
-  /** Matching tasks per sheet and the daily load over all of them. */
+  /** PFAMs as the portfolio groups them: 1st + 2nd builds merged, other sheets on their own. */
+  function pfamUnits() {
+    return Groups.entries(false).map((e) =>
+      e.kind === "group"
+        ? { id: e.id, name: e.name, members: e.members.map((m, i) => ({ p: m.p, build: m.build, later: i > 0 })) }
+        : { id: e.p.id, name: Groups.label(e.p), members: [{ p: e.p, build: null, later: false }] }
+    );
+  }
+
+  /** Matching tasks per PFAM and the daily load (PFAMs with a matching task running that day). */
   function collect() {
     const ui = Store.ui;
     const roles = ui.loadRoles;
-    const later = laterBuilds();
-    const sheets = [];
+    const names = ui.loadTaskNames.map((k) => k.toLowerCase());
+    const units = [];
     const combos = [];
     let skipped = 0;
-    for (const p of Store.data.pfams) {
-      if (p.hidden) continue;
-      const tags = U.tags(p);
-      if (!passes(tags)) continue;
-      const s = Store.sched(p);
+    for (const u of pfamUnits()) {
       const tasks = [];
-      let inherited = false;
-      for (const t of p.tasks) {
-        if (t.type === "section") {
-          inherited = later.has(p.id) && !/volume/i.test(t.name);
-          continue;
+      const sites = new Set();
+      for (const mem of u.members) {
+        const p = mem.p;
+        const tags = U.tags(p);
+        if (!passes(tags)) continue;
+        const s = Store.sched(p);
+        let inherited = false;
+        let n = 0;
+        for (const t of p.tasks) {
+          if (t.type === "section") {
+            inherited = mem.later && !/volume/i.test(t.name);
+            continue;
+          }
+          if (t.type !== "task") continue;
+          const hit = U.matchRoles(t.lead, roles);
+          // Tasks named in "另計任務名稱" count too, whoever leads them.
+          const nameKey = hit.length ? null : names.find((k) => String(t.name).toLowerCase().includes(k));
+          if (!hit.length && !nameKey) continue;
+          if (inherited && !ui.loadInherited) {
+            skipped++;
+            continue;
+          }
+          const r = s.rows.get(t.id);
+          if (!r || (r.start == null && r.end == null)) continue;
+          const a = r.start != null ? r.start : r.end;
+          const b = r.end != null ? r.end : r.start;
+          if (b < a) continue; // "結束早於開始": no meaningful span
+          const combo = hit.length ? hit.join(" + ") : NAME_COMBO;
+          if (!combos.includes(combo)) combos.push(combo);
+          const byName = nameKey ? ui.loadTaskNames[names.indexOf(nameKey)] : null;
+          tasks.push({ key: p.id + ":" + t.id, unit: u, p, build: mem.build, t, a, b, hit, byName, combo, single: a === b && (Number(t.workdays) || 0) <= 1 });
+          n++;
         }
-        if (t.type !== "task") continue;
-        const hit = U.matchRoles(t.lead, roles);
-        if (!hit.length) continue;
-        if (inherited && !ui.loadInherited) {
-          skipped++;
-          continue;
-        }
-        const r = s.rows.get(t.id);
-        if (!r || (r.start == null && r.end == null)) continue;
-        const a = r.start != null ? r.start : r.end;
-        const b = r.end != null ? r.end : r.start;
-        if (b < a) continue; // "結束早於開始": no meaningful span
-        const combo = hit.join(" + ");
-        if (!combos.includes(combo)) combos.push(combo);
-        tasks.push({ key: p.id + ":" + t.id, p, t, a, b, hit, combo, single: a === b && (Number(t.workdays) || 0) <= 1 });
+        if (n && tags.site) sites.add(tags.site);
       }
-      if (tasks.length) sheets.push({ p, tags, tasks });
+      if (tasks.length) units.push({ ...u, tasks, sites: [...sites].sort() });
     }
-    // Legend order: single roles in the order typed, then combinations.
-    const rank = (c) => c.split(" + ").length * 100 + roles.indexOf(c.split(" + ")[0]);
+    // Legend order: single roles in the order typed, then combinations, then tasks picked by name.
+    const rank = (c) => (c === NAME_COMBO ? 1e6 : c.split(" + ").length * 100 + roles.indexOf(c.split(" + ")[0]));
     combos.sort((x, y) => rank(x) - rank(y));
 
-    const all = sheets.flatMap((s) => s.tasks);
+    const all = units.flatMap((u) => u.tasks);
     let lo = Infinity;
     let hi = -Infinity;
     for (const x of all) {
       lo = Math.min(lo, x.a);
       hi = Math.max(hi, x.b);
     }
+    // One PFAM counts once per day however many of its tasks overlap: add its merged spans, not its tasks.
     const load = new Int32Array(all.length ? hi - lo + 2 : 0);
-    for (const x of all) {
-      load[x.a - lo]++;
-      load[x.b - lo + 1]--;
+    for (const u of units) {
+      u.spans = cover(u.tasks);
+      for (const [a, b] of u.spans) {
+        load[a - lo]++;
+        load[b - lo + 1]--;
+      }
     }
     for (let i = 1; i < load.length; i++) load[i] += load[i - 1];
     const at = (day) => (day < lo || day > hi ? 0 : load[day - lo]);
-    return { sheets, all, lo, hi, at, combos, skipped };
+    return { units, all, lo, hi, at, combos, skipped };
   }
 
   /** Consecutive day ranges in [from, to] whose load passes test. */
@@ -158,6 +176,13 @@
         pinOnly = false;
         Store.setUi({ loadRoles: U.parseRoles(ev.target.value) });
       });
+      $("#ldNames").addEventListener("change", (ev) => {
+        pin = null;
+        pinOnly = false;
+        // Names contain spaces, so only commas / 、 / ; separate them.
+        const list = ev.target.value.split(/[,，、;；\n]+/).map((s) => s.trim()).filter(Boolean);
+        Store.setUi({ loadTaskNames: [...new Set(list)] });
+      });
       $("#ldCap").addEventListener(
         "input",
         U.debounce((ev) => {
@@ -171,7 +196,7 @@
       $("#ldToday").addEventListener("click", () => this.scrollToDay && this.scrollToDay(U.today()));
       $("#ldCollapse").addEventListener("click", () => {
         if (!cur) return;
-        const ids = cur.sheetIds;
+        const ids = cur.unitIds;
         const c = Store.ui.loadCollapsed;
         const allCollapsed = ids.every((id) => c[id]);
         Store.setUi({ loadCollapsed: allCollapsed ? {} : Object.fromEntries(ids.map((id) => [id, true])) });
@@ -267,7 +292,7 @@
       root.addEventListener("dblclick", (ev) => {
         const n = ev.target.closest("[data-id]");
         const x = n && cur && cur.byKey.get(n.getAttribute("data-id"));
-        if (x) opts.onOpen(x.p.id, x.t.id);
+        if (x) opts.onOpen(x.unit.id, x.p.id, x.t.id);
       });
     },
 
@@ -275,6 +300,7 @@
       const ui = Store.ui;
       const $ = U.$;
       if (document.activeElement !== $("#ldRoles")) $("#ldRoles").value = ui.loadRoles.join(", ");
+      if (document.activeElement !== $("#ldNames")) $("#ldNames").value = ui.loadTaskNames.join(", ");
       if (document.activeElement !== $("#ldCap")) $("#ldCap").value = ui.loadCap > 0 ? ui.loadCap : "";
       document.querySelectorAll("[data-ldzoom]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.ldzoom === ui.loadZoom)));
       $("#ldFull").checked = ui.loadFull;
@@ -306,11 +332,13 @@
       this.syncControls();
       this.renderFilters();
       const roles = ui.loadRoles;
+      const names = ui.loadTaskNames;
+      const what = [roles.join(" / "), names.length ? "指定任務" : ""].filter(Boolean).join(" + ");
       const cap = Number(ui.loadCap) > 0 ? Number(ui.loadCap) : null;
       const today = U.today();
       const m = collect();
 
-      if (!roles.length || !m.all.length) {
+      if (!m.all.length) {
         cur = null;
         $("#ldCount").textContent = "";
         $("#ldKpis").innerHTML = "";
@@ -318,9 +346,9 @@
         $("#ldRangeNote").textContent = "";
         const filtered = FILTERS.some(([k]) => ui.loadFilters[k] && ui.loadFilters[k].length);
         root.innerHTML = `<div class="empty-note">${
-          !roles.length
-            ? "請在上方輸入要檢查的人力類別，例如 STE, TE"
-            : `沒有負責欄包含 ${U.esc(roles.join(" / "))} 的任務${filtered ? "（或都被 PFAM 範圍篩掉了）" : ""}。`
+          !roles.length && !names.length
+            ? "請在上方輸入要檢查的人力類別（例如 STE, TE）或任務名稱"
+            : `沒有符合的任務（負責欄含 ${U.esc(roles.join(" / ") || "—")}${names.length ? `，或名稱含「${U.esc(names.join("、"))}」` : ""}）${filtered ? "，或都被 PFAM 範圍篩掉了" : ""}。`
         }</div>`;
         return;
       }
@@ -343,28 +371,28 @@
       const W = Math.ceil((r1 - r0 + 1) * ppd);
       const x = (day) => (day - r0) * ppd;
 
-      // ---- rows: sheets ordered by their first visible task
+      // ---- rows: PFAMs ordered by their first visible task
       const active = (t, d) => t.a <= d && d <= t.b;
       const shown = [];
       let before = 0;
       let listed = 0;
-      let listedSheets = 0;
-      for (const s of m.sheets) {
-        let tasks = s.tasks.filter((t) => t.b >= r0);
-        before += s.tasks.length - tasks.length;
+      let listedUnits = 0;
+      for (const u of m.units) {
+        let tasks = u.tasks.filter((t) => t.b >= r0);
+        before += u.tasks.length - tasks.length;
         listed += tasks.length;
-        if (tasks.length) listedSheets++;
+        if (tasks.length) listedUnits++;
         if (pin != null && pinOnly) tasks = tasks.filter((t) => active(t, pin));
-        if (tasks.length) shown.push({ ...s, tasks, first: Math.min(...tasks.map((t) => t.a)) });
+        if (tasks.length) shown.push({ ...u, tasks, first: Math.min(...tasks.map((t) => t.a)) });
       }
       shown.sort((p, q) => p.first - q.first);
       const rows = [];
-      for (const s of shown) {
-        const collapsed = !!ui.loadCollapsed[s.p.id];
-        rows.push({ sheet: s, collapsed });
-        if (!collapsed) s.tasks.forEach((t, i) => rows.push({ task: t, zebra: i % 2 === 1 }));
+      for (const u of shown) {
+        const collapsed = !!ui.loadCollapsed[u.id];
+        rows.push({ unit: u, collapsed });
+        if (!collapsed) u.tasks.forEach((t, i) => rows.push({ task: t, zebra: i % 2 === 1 }));
       }
-      $("#ldCount").textContent = `${listed} 個 task · ${listedSheets} 個 PFAM`;
+      $("#ldCount").textContent = `${listedUnits} 個 PFAM · ${listed} 個 task`;
       $("#ldRangeNote").textContent = clipped
         ? `（時間軸從 ${U.fmt(cutoff).slice(0, 7)} 開始${before ? `，之前已結束的 ${before} 個 task 未列出` : ""}）`
         : "";
@@ -395,13 +423,13 @@
       const nowC = m.at(today);
       $("#ldKpis").innerHTML =
         kpi(
-          `${U.esc(roles.join(" / "))} 相關 task`,
-          `${listed} 個`,
-          `${listedSheets} 個 PFAM${m.skipped ? `・未計 2nd 沿用段 ${m.skipped} 個` : ""}`,
+          `用到 ${U.esc(what)} 的 PFAM`,
+          `${listedUnits} 個`,
+          `${listed} 個 task${m.skipped ? `・未計 2nd 沿用段 ${m.skipped} 個` : ""}`,
           "k-span"
         ) +
         kpi(
-          "今天同時進行",
+          "今天同時進行的 PFAM",
           `${nowC} 個`,
           cap ? (nowC > cap ? `<span class="late">超過上限 ${nowC - cap} 個</span>` : `上限 ${cap}`) : "未設定上限",
           cap && nowC > cap ? "k-over" : "k-prep"
@@ -424,7 +452,7 @@
       const pc = pin != null ? m.at(pin) : 0;
       $("#ldBar").innerHTML =
         (pin != null
-          ? `<div class="ld-pin">📌 ${U.fmt(pin, "full")}：同時 <b>${pc}</b> 個 task${cap && pc > cap ? `<span class="late">（超過上限 ${pc - cap}）</span>` : ""}
+          ? `<div class="ld-pin">📌 ${U.fmt(pin, "full")}：同時 <b>${pc}</b> 個 PFAM（${m.all.filter((t) => active(t, pin)).length} 個 task）${cap && pc > cap ? `<span class="late">超過上限 ${pc - cap}</span>` : ""}
               <label class="toggle"><input type="checkbox" data-ld="pinOnly"${pinOnly ? " checked" : ""}> 只看這天進行中的 task</label>
               <button type="button" class="link" data-ld="unpin">✕ 取消標記</button></div>`
           : `<span class="muted">點負載圖上的任一天，可標出當天進行中的 task</span>`) +
@@ -461,7 +489,7 @@
       let ticks = "";
       for (let v = 0; v <= yMax; v += step) ticks += `<span class="ld-ytick" style="top:${AXIS_H + yOf(v) - 7}px">${v}</span>`;
       corner.innerHTML =
-        `<div class="ld-title">每日同時進行的 task 數<small>${U.esc(roles.join(" / "))}・${listedSheets} 個 PFAM 合計</small></div>${ticks}` +
+        `<div class="ld-title">每日同時進行的 PFAM 數<small>${U.esc(what)}・同一 PFAM 多個 task 重疊只算 1</small></div>${ticks}` +
         (cap ? `<span class="ld-caplab" style="top:${AXIS_H + yOf(cap) - 8}px">上限 ${cap}</span>` : "");
       head.appendChild(corner);
       const hs = el("svg", { width: W, height: AXIS_H + CHART_H, class: "g-axis ld-head" });
@@ -530,17 +558,19 @@
         const y = i * ROW_H;
         const cy = y + ROW_H / 2;
         const lab = document.createElement("div");
-        if (r.sheet) {
-          const s = r.sheet;
+        if (r.unit) {
+          const u = r.unit;
+          const builds = u.members.length > 1 ? `<span class="tag builds">${u.members.map((mem) => U.esc(mem.build)).join(" + ")}</span>` : "";
           lab.className = "g-row is-section ld-sheet";
           lab.innerHTML =
-            `<button class="caret" data-ldtoggle="${s.p.id}" aria-label="${r.collapsed ? "展開" : "收合"} PFAM" aria-expanded="${!r.collapsed}">${r.collapsed ? "▸" : "▾"}</button>` +
-            `<span class="c-name" title="${U.esc(s.p.sheet)}">${U.esc(s.p.sheet)}</span>` +
-            (s.tags.site ? `<span class="tag site-${s.tags.site}">${U.esc(s.tags.site)}</span>` : "") +
-            `<span class="ld-n">${s.tasks.length} 個</span>`;
+            `<button class="caret" data-ldtoggle="${u.id}" aria-label="${r.collapsed ? "展開" : "收合"} PFAM" aria-expanded="${!r.collapsed}">${r.collapsed ? "▸" : "▾"}</button>` +
+            `<span class="c-name" title="${U.esc(u.name)}\nExcel 分頁：${U.esc(u.members.map((mem) => mem.p.sheet).join("、"))}">${U.esc(u.name)}</span>` +
+            builds +
+            u.sites.map((st) => `<span class="tag site-${st}">${U.esc(st)}</span>`).join("") +
+            `<span class="ld-n">${u.tasks.length} 個</span>`;
           labels.appendChild(lab);
           el("rect", { x: 0, y, width: W, height: ROW_H, class: "rowhit sec" }, bg);
-          for (const [a, b] of cover(s.tasks)) {
+          for (const [a, b] of cover(u.tasks)) {
             el("rect", { x: x(a), y: cy - 3, width: Math.max((b - a + 1) * ppd, 2), height: 6, rx: 1, class: "ld-cover" }, barG);
           }
           return;
@@ -551,8 +581,8 @@
         lab.className = "g-row ld-task" + (r.zebra ? " zebra" : "") + (hl ? " focus" : "");
         lab.dataset.id = t.key;
         lab.innerHTML =
-          `<span class="c-name" title="${U.esc(t.t.name)}">${U.esc(t.t.name)}</span>` +
-          `<span class="role-pill">${U.esc(t.hit.join("/"))}</span>` +
+          `<span class="c-name" title="${U.esc(t.t.name)}">${t.build ? `<span class="build-pill">${U.esc(t.build)}</span>` : ""}${U.esc(t.t.name)}</span>` +
+          `<span class="role-pill${t.hit.length ? "" : " by-name"}">${t.hit.length ? U.esc(t.hit.join("/")) : "名稱"}</span>` +
           `<span class="c-lead" title="${U.esc(t.t.lead)}">${U.esc(t.t.lead)}</span>`;
         labels.appendChild(lab);
         el("rect", { x: 0, y, width: W, height: ROW_H, class: "rowhit" + (r.zebra ? " zebra" : "") + (hl ? " focus" : ""), "data-id": t.key }, bg);
@@ -582,7 +612,7 @@
       guides.push(el("line", { y1: 0, y2: H, class: "ld-guide", visibility: "hidden" }, gridG));
 
       root.appendChild(scroller);
-      cur = { m, r0, r1, ppd, x, cap, zoom: zoomKey, byKey, guides, sheetIds: shown.map((s) => s.p.id), slotOf };
+      cur = { m, r0, r1, ppd, x, cap, zoom: zoomKey, byKey, guides, unitIds: shown.map((u) => u.id), slotOf };
 
       if (scroll) {
         scroller.scrollLeft = scroll.l;
@@ -599,17 +629,26 @@
     dayTip(day) {
       const c = cur.m.at(day);
       const list = cur.m.all.filter((t) => t.a <= day && day <= t.b);
+      const byUnit = new Map();
+      for (const t of list) {
+        if (!byUnit.has(t.unit)) byUnit.set(t.unit, []);
+        byUnit.get(t.unit).push(t);
+      }
       const capRow = cur.cap
         ? `<div class="tip-row"><span>上限</span><b class="${c > cur.cap ? "late" : ""}">${cur.cap}${c > cur.cap ? `（超過 ${c - cur.cap}）` : ""}</b></div>`
         : "";
-      const items = list
+      const units = [...byUnit];
+      const items = units
         .slice(0, TIP_TASKS)
-        .map((t) => `<div class="ld-tip-task"><i class="sw s${cur.slotOf(t.combo)}"></i><span class="muted">${U.esc(t.p.sheet)}</span> ${U.esc(t.t.name)}</div>`)
+        .map(
+          ([u, ts]) =>
+            `<div class="ld-tip-task"><b>${U.esc(u.name)}</b> <span class="muted">${ts.length > 1 ? ts.length + " 個 task：" : ""}${U.esc(ts.map((t) => t.t.name).join("、"))}</span></div>`
+        )
         .join("");
-      const more = list.length > TIP_TASKS ? `<div class="muted">…另外 ${list.length - TIP_TASKS} 個</div>` : "";
+      const more = units.length > TIP_TASKS ? `<div class="muted">…另外 ${units.length - TIP_TASKS} 個 PFAM</div>` : "";
       return (
         `<div class="tip-title">${U.fmt(day, "full")}</div>` +
-        `<div class="tip-row"><span>同時進行</span><b class="${cur.cap && c > cur.cap ? "late" : ""}">${c} 個 task</b></div>${capRow}` +
+        `<div class="tip-row"><span>同時進行</span><b class="${cur.cap && c > cur.cap ? "late" : ""}">${c} 個 PFAM（${list.length} 個 task）</b></div>${capRow}` +
         (list.length ? `<div class="ld-tip-list">${items}${more}</div>` : "") +
         `<div class="ld-tip-hint">點一下標出這天的 task</div>`
       );
@@ -622,12 +661,14 @@
       const notes = t.t.notes ? `<div class="tip-notes">${U.esc(t.t.notes.length > 220 ? t.t.notes.slice(0, 220) + "…" : t.t.notes)}</div>` : "";
       return (
         `<div class="tip-title">${U.esc(t.t.name)}</div>` +
-        `<div class="tip-row"><span>PFAM</span><b>${U.esc(t.p.sheet)}</b></div>` +
+        `<div class="tip-row"><span>PFAM</span><b>${U.esc(t.unit.name)}${t.build ? ` · ${U.esc(t.build)}` : ""}</b></div>` +
+        `<div class="tip-row"><span>Excel 分頁</span><b>${U.esc(t.p.sheet)}</b></div>` +
+        (t.hit.length ? "" : `<div class="tip-row"><span>列入原因</span><b>任務名稱符合「${U.esc(t.byName)}」</b></div>`) +
         `<div class="tip-row"><span>負責</span><b>${U.esc(t.t.lead)}</b></div>` +
         `<div class="tip-row"><span>日期</span><b>${U.fmt(t.a, "full")} → ${U.fmt(t.b, "full")}</b></div>` +
         `<div class="tip-row"><span>工期</span><b>${t.t.workdays != null ? t.t.workdays + " 工作天" : "—"} · ${t.b - t.a + 1} 日曆天</b></div>` +
         (t.t.pct ? `<div class="tip-row"><span>完成</span><b>${t.t.pct}%</b></div>` : "") +
-        `<div class="tip-row"><span>期間最多同時</span><b class="${hot ? "late" : ""}">${most} 個 task${hot ? `（超過上限 ${most - cur.cap}）` : ""}</b></div>` +
+        `<div class="tip-row"><span>期間最多同時</span><b class="${hot ? "late" : ""}">${most} 個 PFAM${hot ? `（超過上限 ${most - cur.cap}）` : ""}</b></div>` +
         notes +
         `<div class="ld-tip-hint">雙擊開啟這個 PFAM 的甘特圖</div>`
       );

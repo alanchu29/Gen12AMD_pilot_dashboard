@@ -34,6 +34,14 @@
   const Groups = {
     autoKey,
 
+    /** Name for a sheet outside any group, in the group style ("Gen 12.1 GP-HL · Pre GA"); the sheet name when the tags can't tell. */
+    label(p) {
+      const t = U.tags(p);
+      if (!t.sku || t.phase === "其他") return p.sheet;
+      const v = variantOf(p.sheet);
+      return `Gen ${t.gen} ${t.sku}${v ? " · " + v : ""} · ${t.phase}`;
+    },
+
     /**
      * Top-level entries for the portfolio in sheet order: { kind: "group", id, name, members:[{p, build}] }
      * or { kind: "pfam", p }. Archived (hidden) sheets never merge.

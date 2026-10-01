@@ -56,6 +56,7 @@
     showCloudDiff: true, // mark tasks that differ from the cloud copy
     page: "overview", // "overview" (portfolio + detail) or "load" (人力負載)
     loadRoles: ["STE", "TE"], // load page: tasks whose LEAD contains these
+    loadTaskNames: [], // load page: also tasks whose name contains any of these (case-insensitive)
     loadCap: 5, // load page: more concurrent tasks than this is over the limit (null = no limit)
     loadZoom: "week",
     loadFilters: { gen: [], site: [], phase: [], sku: [] },

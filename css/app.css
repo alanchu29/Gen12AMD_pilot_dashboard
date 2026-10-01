@@ -830,7 +830,10 @@ select.in.cal { min-width: 104px; }
 .ld-field { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--brand-ink); }
 .ld-field input { border: 1.5px solid color-mix(in srgb, var(--brand) 45%, transparent); border-radius: 7px; background: var(--surface); padding: 5px 10px; font-weight: 650; color: var(--ink); }
 .ld-field .muted { font-weight: 500; font-size: 12.5px; }
-#ldRoles { width: 170px; }
+#ldRoles { width: 150px; }
+#ldNames { width: 230px; }
+.role-pill.by-name { background: var(--s7); color: #fff; }
+.g-row.ld-task .build-pill { font-size: 10px; line-height: 15px; padding: 0 5px; margin-right: 5px; }
 #ldCap { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
 .ld-field.cap { color: var(--late); }
 .ld-field.cap input { border-color: color-mix(in srgb, var(--late) 55%, transparent); }
