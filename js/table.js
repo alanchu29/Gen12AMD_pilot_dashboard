@@ -18,7 +18,8 @@
   const Table = {
     pfamId: null, // the sheet whose rows are on screen (in a merged view: the active build tab)
 
-    render(root, pfam, sched) {
+    /** cloudDiff: task id -> local-vs-cloud difference (CloudDiff), or null. */
+    render(root, pfam, sched, cloudDiff) {
       this.pfamId = pfam.id;
       const calendars = Store.data.calendars;
       const wbs = sched.wbs;
@@ -33,6 +34,7 @@
       const rows = pfam.tasks.map((t, i) => {
         const r = sched.rows.get(t.id) || {};
         const w = U.esc(wbs.get(t.id));
+        const cd = cloudDiff && cloudDiff.get(t.id);
         const acts = `<td class="acts">
             <button data-act="up" data-tid="${t.id}" title="上移" aria-label="上移"${i === 0 ? " disabled" : ""}>↑</button>
             <button data-act="down" data-tid="${t.id}" title="下移" aria-label="下移"${i === pfam.tasks.length - 1 ? " disabled" : ""}>↓</button>
@@ -40,8 +42,8 @@
             <button data-act="del" data-tid="${t.id}" title="刪除" aria-label="刪除" class="danger">✕</button>
           </td>`;
         if (t.type === "section") {
-          return `<tr class="sec" data-row="${t.id}">
-            <td class="wbs">${w}</td>
+          return `<tr class="sec${cd ? ` cd-${cd.kind}` : ""}" data-row="${t.id}">
+            <td class="wbs">${w}${CloudDiff.rowBadge(cd)}</td>
             <td colspan="13"><input class="in sec-name" data-tid="${t.id}" data-f="name" value="${U.esc(t.name)}" aria-label="區段名稱"></td>
             ${acts}</tr>`;
         }
@@ -56,9 +58,9 @@
         }
         const err = r.error ? `<span class="warn" title="${U.esc(r.error)}">⚠</span>` : "";
         const focus = Store.ui.highlight ? U.matchRoles(t.lead, Store.ui.focusRoles) : [];
-        const cls = [r.error ? "has-err" : "", focus.length ? "focus" : ""].filter(Boolean).join(" ");
+        const cls = [r.error ? "has-err" : "", focus.length ? "focus" : "", cd ? `cd-${cd.kind}` : ""].filter(Boolean).join(" ");
         return `<tr data-row="${t.id}"${cls ? ` class="${cls}"` : ""}>
-          <td class="wbs">${w}${err}${focus.length ? `<span class="role-pill">${U.esc(focus.join("/"))}</span>` : ""}</td>
+          <td class="wbs">${w}${err}${CloudDiff.rowBadge(cd)}${focus.length ? `<span class="role-pill">${U.esc(focus.join("/"))}</span>` : ""}</td>
           <td><input class="in name" data-tid="${t.id}" data-f="name" value="${U.esc(t.name)}" aria-label="任務名稱"></td>
           <td><input class="in lead" data-tid="${t.id}" data-f="lead" value="${U.esc(t.lead)}" aria-label="負責單位"></td>
           <td><select class="in" data-tid="${t.id}" data-f="startMode" aria-label="開始規則">${MODES.map(([v, l]) => `<option value="${v}"${v === t.startMode ? " selected" : ""}>${l}</option>`).join("")}</select></td>

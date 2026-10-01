@@ -191,26 +191,29 @@
         const y = i * ROW_H;
         const res = sched.rows.get(t.id) || {};
         const wbs = sched.wbs.get(t.id);
+        const cd = opts.diff && opts.diff.get(t.id);
+        const cdCls = cd ? ` cd-${cd.kind}` : "";
 
         // label
         const lab = document.createElement("div");
         const hl = ui.highlight && r.focus && r.focus.length;
-        lab.className = "g-row" + (r.lane ? " is-lane" : "") + (r.section ? " is-section" : "") + (r.section && t._inherited ? " inherited" : "") + (r.zebra ? " zebra" : "") + (hl ? " focus" : "");
+        lab.className = "g-row" + (r.lane ? " is-lane" : "") + (r.section ? " is-section" : "") + (r.section && t._inherited ? " inherited" : "") + (r.zebra ? " zebra" : "") + (hl ? " focus" : "") + cdCls;
         lab.dataset.id = t.id;
         const caret = (what) => `<button class="caret" data-toggle="${t.id}" aria-label="${r.collapsed ? "展開" : "收合"}${what}" aria-expanded="${!r.collapsed}">${r.collapsed ? "▸" : "▾"}</button>`;
         if (r.lane) {
           const dock = opts.laneDock && opts.laneDock[t.id];
-          lab.innerHTML = `${caret("build")}<span class="lane-pill">${U.esc(t.build)}</span><span class="c-name" title="${U.esc(t.name)}">${U.esc(t.name)}</span>${dock != null ? `<span class="lane-dock">Dock ${U.fmt(dock, "md")}</span>` : ""}`;
+          const unsynced = CloudDiff.pending(t._pfamId) ? CloudDiff.badge() : "";
+          lab.innerHTML = `${caret("build")}<span class="lane-pill">${U.esc(t.build)}</span><span class="c-name" title="${U.esc(t.name)}">${U.esc(t.name)}</span>${unsynced}${dock != null ? `<span class="lane-dock">Dock ${U.fmt(dock, "md")}</span>` : ""}`;
         } else if (r.section) {
           const copied = t._total && t._copied / t._total >= 0.5
             ? `<span class="tag copy" title="${t._copied}/${t._total} 項任務的名稱與日期和其他分頁完全相同，疑似從其他分頁複製">疑似複製 ${t._copied}/${t._total}</span>`
             : "";
           const inh = t._inherited ? `<span class="tag inh" title="2nd build 的前段通常沿用 1st，預設收合">沿用 1st</span>${copied}` : "";
-          lab.innerHTML = `${caret("區段")}<span class="c-wbs">${U.esc(wbs)}</span><span class="c-name" title="${U.esc(t.name)}">${U.esc(t.name)}</span>${inh}`;
+          lab.innerHTML = `${caret("區段")}<span class="c-wbs">${U.esc(wbs)}</span><span class="c-name" title="${U.esc(t.name)}">${U.esc(t.name)}</span>${CloudDiff.rowBadge(cd)}${inh}`;
         } else {
           const err = res.error ? `<span class="warn" title="${U.esc(res.error)}" aria-label="${U.esc(res.error)}">⚠</span>` : "";
           const pill = hl ? `<span class="role-pill">${U.esc(r.focus.join("/"))}</span>` : "";
-          lab.innerHTML = `<span class="c-wbs">${U.esc(wbs)}</span><span class="c-name" title="${U.esc(t.name)}">${err}${U.esc(t.name)}</span>${pill}<span class="c-lead" title="${U.esc(t.lead)}">${U.esc(t.lead)}</span>`;
+          lab.innerHTML = `<span class="c-wbs">${U.esc(wbs)}</span><span class="c-name" title="${U.esc(t.name)}">${err}${U.esc(t.name)}</span>${CloudDiff.rowBadge(cd)}${pill}<span class="c-lead" title="${U.esc(t.lead)}">${U.esc(t.lead)}</span>`;
         }
         labels.appendChild(lab);
 
@@ -243,6 +246,13 @@
           el("rect", { x: x(b0), y: y + ROW_H - 7, width: Math.max((b1 - b0 + 1) * ppd, 3), height: 3, rx: 1.5, class: "basebar" }, baseG);
         }
 
+        // where the task sits in the cloud copy, when local edits moved it
+        if (cd && cd.moved && (cd.cloud.start != null || cd.cloud.end != null)) {
+          const c0 = cd.cloud.start != null ? cd.cloud.start : cd.cloud.end;
+          const c1 = cd.cloud.end != null ? cd.cloud.end : cd.cloud.start;
+          el("rect", { x: x(c0) + 0.5, y: y + ROW_H / 2 - BAR_H / 2 - 1.5, width: Math.max((c1 - c0 + 1) * ppd - 1, 4), height: BAR_H + 3, rx: 4, class: "cloudbar" }, baseG);
+        }
+
         if (res.start == null && res.end == null) return;
         const s = res.start != null ? res.start : res.end;
         const e = res.end != null ? res.end : res.start;
@@ -253,12 +263,12 @@
         if (single) {
           const cx = x(s) + ppd / 2;
           const rr = 6;
-          el("path", { d: `M${cx} ${cy - rr}L${cx + rr} ${cy}L${cx} ${cy + rr}L${cx - rr} ${cy}Z`, class: `ms s${slot}${hl ? " focus" : ""}`, "data-id": t.id }, barG);
+          el("path", { d: `M${cx} ${cy - rr}L${cx + rr} ${cy}L${cx} ${cy + rr}L${cx - rr} ${cy}Z`, class: `ms s${slot}${hl ? " focus" : ""}${cdCls}`, "data-id": t.id }, barG);
           endX = cx + rr;
         } else {
           const x0 = x(s);
           const w = Math.max((e - s + 1) * ppd, 3);
-          el("rect", { x: x0, y: cy - BAR_H / 2, width: w, height: BAR_H, rx: 3, class: `bar s${slot}${hl ? " focus" : ""}`, "data-id": t.id }, barG);
+          el("rect", { x: x0, y: cy - BAR_H / 2, width: w, height: BAR_H, rx: 3, class: `bar s${slot}${hl ? " focus" : ""}${cdCls}`, "data-id": t.id }, barG);
           const pct = Math.max(0, Math.min(100, Number(t.pct) || 0));
           if (pct > 0) el("rect", { x: x0, y: cy + BAR_H / 2 - 4, width: (w * pct) / 100, height: 4, rx: 2, class: "progress", "data-id": t.id }, barG);
           endX = x0 + w;
@@ -395,7 +405,7 @@
         const id = n ? n.dataset.id || n.getAttribute("data-id") : null;
         setHot(id);
         const onMark = n && n.matches(".bar, .ms, .secbar, .lanebar, .progress, .g-row");
-        if (id && onMark) opts.tip.show(this.tipHtml(byId.get(id), sched, pfam), ev);
+        if (id && onMark) opts.tip.show(this.tipHtml(byId.get(id), sched, pfam, opts.diff && opts.diff.get(id)), ev);
         else opts.tip.hide();
       });
       scroller.addEventListener("mouseleave", () => {
@@ -413,7 +423,7 @@
       });
     },
 
-    tipHtml(t, sched, pfam) {
+    tipHtml(t, sched, pfam, cd) {
       if (!t) return "";
       const r = sched.rows.get(t.id) || {};
       const wbs = sched.wbs.get(t.id);
@@ -427,7 +437,7 @@
           ? `<div class="tip-notes">2nd build 的前段，預設收合（沿用 1st）。${t._total ? `${t._copied}/${t._total} 項任務與其他分頁日期完全相同。` : ""}</div>`
           : "";
         return `<div class="tip-title">${U.esc(wbs)} ${U.esc(t.name)}</div>${build}
-          <div class="tip-row"><span>期間</span><b>${U.fmt(r.start, "full")} → ${U.fmt(r.end, "full")}</b></div>${note}`;
+          <div class="tip-row"><span>期間</span><b>${U.fmt(r.start, "full")} → ${U.fmt(r.end, "full")}</b></div>${note}${CloudDiff.tipHtml(cd)}`;
       }
       const g = U.OWNER_GROUPS.find((x) => x.key === U.ownerGroup(t.lead));
       let rule = "未排程";
@@ -446,7 +456,7 @@
         <div class="tip-row"><span>日期</span><b>${U.fmt(r.start, "full") || "—"} → ${U.fmt(r.end, "full") || "—"}</b></div>
         <div class="tip-row"><span>工期</span><b>${t.workdays != null ? t.workdays + " 工作天" : "—"}${r.days ? ` · ${r.days} 日曆天` : ""}</b></div>
         <div class="tip-row"><span>開始規則</span><b>${rule}</b></div>
-        ${base}${delta}
+        ${base}${delta}${CloudDiff.tipHtml(cd)}
         ${t.pct ? `<div class="tip-row"><span>完成</span><b>${t.pct}%</b></div>` : ""}
         ${r.error ? `<div class="tip-err">⚠ ${U.esc(r.error)}</div>` : ""}
         ${t.notes ? `<div class="tip-notes">${U.esc(t.notes.length > 220 ? t.notes.slice(0, 220) + "…" : t.notes)}</div>` : ""}`;

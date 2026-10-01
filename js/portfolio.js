@@ -77,6 +77,12 @@
     return html;
   }
 
+  /** ⇪ on a group row when any of its sheets has unsynced edits. */
+  function unsyncedOf(members) {
+    const list = members.filter((m) => CloudDiff.pending(m.p.id));
+    return list.length ? CloudDiff.badge(`本機有尚未同步到雲端的修改：${list.map((m) => m.build).join("、")}`) : "";
+  }
+
   const Portfolio = {
     /** Top-level items for the current view, after filters and sort. */
     items() {
@@ -264,7 +270,7 @@
       const lead = member ? `<span class="build-pill">${U.esc(it.build)}</span>` : "";
       return `<div class="pf-row${member ? " member" : ""}${sel ? " selected" : ""}${p.hidden ? " is-hidden" : ""}" role="listitem" tabindex="0" data-pfam="${p.id}" aria-current="${sel}">
         <div class="c-name">
-          <div class="nm" title="${U.esc(p.sheet)}">${lead}${U.esc(p.sheet)}${it.errors ? `<span class="warn" title="${it.errors} 個任務有排程錯誤">⚠</span>` : ""}${p.hidden ? `<span class="tag ghost">隱藏</span>` : ""}</div>
+          <div class="nm" title="${U.esc(p.sheet)}">${lead}${U.esc(p.sheet)}${it.errors ? `<span class="warn" title="${it.errors} 個任務有排程錯誤">⚠</span>` : ""}${CloudDiff.pending(p.id) ? CloudDiff.badge() : ""}${p.hidden ? `<span class="tag ghost">隱藏</span>` : ""}</div>
           ${member ? "" : `<div class="tg">${this.tagsHtml(it)}</div>`}
         </div>
         <div class="c-date">${key.build ? U.fmt(key.build.start) : "—"}</div>
@@ -290,7 +296,7 @@
         .join("");
       return `<div class="pf-row grp${sel ? " selected" : ""}${inside ? " has-selected" : ""}" role="listitem" tabindex="0" data-pfam="${it.id}" aria-current="${sel}" aria-expanded="${open}">
         <div class="c-name">
-          <div class="nm"><button class="caret pf-caret" data-expand="${it.id}" aria-label="${open ? "收合" : "展開"}分頁" aria-expanded="${open}">${open ? "▾" : "▸"}</button>${U.esc(it.name)}<span class="tag builds" title="${it.members.length} 個 Excel 分頁合併：${U.esc(it.members.map((m) => m.p.sheet).join("、"))}">${U.esc(it.tags.phase)}</span>${it.errors ? `<span class="warn" title="${it.errors} 個任務有排程錯誤">⚠</span>` : ""}</div>
+          <div class="nm"><button class="caret pf-caret" data-expand="${it.id}" aria-label="${open ? "收合" : "展開"}分頁" aria-expanded="${open}">${open ? "▾" : "▸"}</button>${U.esc(it.name)}<span class="tag builds" title="${it.members.length} 個 Excel 分頁合併：${U.esc(it.members.map((m) => m.p.sheet).join("、"))}">${U.esc(it.tags.phase)}</span>${it.errors ? `<span class="warn" title="${it.errors} 個任務有排程錯誤">⚠</span>` : ""}${unsyncedOf(it.members)}</div>
           <div class="tg">${this.tagsHtml(it)}</div>
         </div>
         <div class="c-date stack">${stack((l) => d(l.key.build))}</div>

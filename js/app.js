@@ -276,6 +276,14 @@
         focusTile;
     }
 
+    // ---- local vs cloud
+    const cdEntries = (v.mode === "group" ? v.g.members : [{ p: v.pfam }]).map((m) => ({ p: m.p, build: m.build, d: CloudDiff.of(m.p) }));
+    const cdOn = Store.ui.showCloudDiff;
+    const cdMap = cdOn ? CloudDiff.taskMap(cdEntries, v.mode === "group") : null;
+    const cdBox = $("#cloudDiff");
+    cdBox.innerHTML = CloudDiff.bannerHtml(cdEntries, cdOn);
+    cdBox.hidden = !cdBox.innerHTML;
+
     // ---- toolbar + legend
     document.querySelectorAll("[data-zoom]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.zoom === Store.ui.zoom)));
     $("#colorBy").value = Store.ui.colorBy;
@@ -288,6 +296,7 @@
       legendHtml(gp) +
       (Store.ui.highlight && roles.length ? `<span><i class="lg-focus"></i>${U.esc(roleLabel)} 任務</span>` : "") +
       (Store.ui.showBaseline ? `<span><i class="lg-base"></i>基準（原 Excel）</span>` : "") +
+      (cdMap && cdMap.size ? CloudDiff.legendHtml() : "") +
       `<span><i class="lg-ms"></i>單日里程碑</span>` +
       `<span><i class="lg-hol"></i>${Store.ui.zoom === "day" ? "非工作日" : "假日"}（${U.esc(gp.calendar)}）</span>`;
 
@@ -296,6 +305,7 @@
     Gantt.render($("#gantt"), gp, gs, {
       ui: Store.ui,
       tip,
+      diff: cdMap,
       defaultCollapsed: v.mode === "group" ? v.merged.defaults : null,
       laneDock,
       onToggle(id, wasCollapsed) {
@@ -333,7 +343,8 @@
     $("#asmCount").textContent = p.assumptions ? "" : "（尚無內容）";
 
     renderInfoForm(p);
-    Table.render($("#tableWrap"), p, ps);
+    const tableDiff = cdOn ? CloudDiff.taskMap(cdEntries.filter((e) => e.p.id === p.id), false) : null;
+    Table.render($("#tableWrap"), p, ps, tableDiff);
     $("#rawCount").textContent = `${p.tasks.filter((t) => t.type === "task").length} 個任務${scope}`;
     $("#baselineNote").textContent = p.baselineLabel
       ? `基準：${p.baselineLabel}`
@@ -471,6 +482,7 @@
       for (const id of deleted.slice()) {
         await Remote.deletePfam(id);
         Store.data.deleted = (Store.data.deleted || []).filter((x) => x !== id);
+        Store.setCloudPfam(id, null);
       }
       if (Store.data.calendarsDirty) {
         await Remote.saveCalendars(Store.data.calendars);
@@ -480,6 +492,7 @@
         const p = Store.pfam(id);
         if (!p) continue;
         const rev = p._rev;
+        const sent = JSON.parse(JSON.stringify(p)); // edits made during the upload are not in the cloud
         const r = await Remote.savePfam(p);
         if (r.conflict) {
           setSync("conflict", `「${p.sheet}」在雲端已被其他人更新`);
@@ -490,6 +503,7 @@
           return;
         }
         p.version = r.version;
+        Store.setCloudPfam(id, sent);
         if (p._rev === rev) Store.markClean([id]);
       }
       Store.persist();
@@ -504,8 +518,10 @@
     if (!p) return;
     setSync("syncing");
     try {
+      const sent = JSON.parse(JSON.stringify(p));
       const r = await Remote.savePfam(p, true);
       p.version = r.version;
+      Store.setCloudPfam(id, sent);
       Store.markClean([id]);
       Store.persist();
       setSync("synced");
@@ -520,6 +536,7 @@
     sync.msg = msg || "";
     if (state === "synced") sync.at = new Date();
     renderSoon("status");
+    if (state === "synced") renderSoon("list", "detail"); // unsynced markers may have cleared
   }
 
   async function cloudLoad({ force, quiet } = {}) {
@@ -529,6 +546,8 @@
     try {
       const data = await Remote.loadAll().finally(hideBlocker);
       sync.loaded = true;
+      Store.setCloud(data.pfams || []); // what local edits are compared with, even when they are kept
+      renderSoon("list", "detail");
       if (!data.pfams || !data.pfams.length) {
         setSync("synced");
         toast("雲端試算表目前是空的。可在「雲端同步」中上傳本機資料。", "", [{ label: "開啟設定", run: openCloud }]);
@@ -844,6 +863,12 @@
     });
     $("#syncChip").addEventListener("click", openCloud);
     $("#btnSync").addEventListener("click", syncToCloud);
+    $("#cloudDiff").addEventListener("click", (ev) => {
+      if (ev.target.closest('[data-cd="sync"]')) syncToCloud();
+    });
+    $("#cloudDiff").addEventListener("change", (ev) => {
+      if (ev.target.dataset.cd === "mark") Store.setUi({ showCloudDiff: ev.target.checked });
+    });
     $("#bannerSync").addEventListener("click", syncToCloud);
     $("#bannerDiscard").addEventListener("click", discardLocal);
     $("#blockerSkip").addEventListener("click", hideBlocker);
@@ -927,6 +952,7 @@
         for (const p of Store.data.pfams) if (r.versions && r.versions[p.id] != null) p.version = r.versions[p.id];
         Store.data.deleted = [];
         Store.data.calendarsDirty = false;
+        Store.setCloud(Store.data.pfams);
         Store.markClean([...Store.dirty]);
         Store.persist.now();
         $("#cloudMsg").textContent = `✓ 已上傳 ${r.pfams} 個 PFAM、${r.tasks} 個任務`;

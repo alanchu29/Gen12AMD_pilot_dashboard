@@ -4,6 +4,7 @@
   const LS_DATA = "npiGantt.data.v1";
   const LS_UI = "npiGantt.ui.v1";
   const LS_DIRTY = "npiGantt.dirty.v1";
+  const LS_CLOUD = "npiGantt.cloudBase.v1";
   const UNDO_LIMIT = 100;
 
   const lsGet = (k) => {
@@ -24,6 +25,12 @@
   };
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  const cloudCopy = (p) => {
+    const c = clone(p);
+    delete c._rev;
+    delete c._xl;
+    return c;
+  };
 
   const DEFAULT_UI = {
     selectedId: null,
@@ -46,12 +53,14 @@
     pfExpanded: {}, // group id -> member rows shown in the portfolio
     pfFullRange: false, // portfolio timeline: false = start 2 months before today
     tableTab: {}, // group id -> sheet id edited in the raw table
+    showCloudDiff: true, // mark tasks that differ from the cloud copy
   };
 
   const Store = {
     data: null,
     ui: clone(DEFAULT_UI),
     dirty: new Set(), // pfam ids changed since last cloud save
+    cloudBase: {}, // pfam id -> that PFAM as last read from / written to the cloud (see clouddiff.js)
     undoStack: [],
     redoStack: [],
     listeners: new Set(),
@@ -68,6 +77,7 @@
       this.ui.uiRev = DEFAULT_UI.uiRev;
       this.ui.filters = Object.assign(clone(DEFAULT_UI.filters), this.ui.filters || {});
       this.dirty = new Set(lsGet(LS_DIRTY) || []);
+      this.cloudBase = lsGet(LS_CLOUD) || {};
       if (this.ui.selectedId && !this.pfam(this.ui.selectedId)) this.ui.selectedId = null;
     },
 
@@ -135,8 +145,11 @@
     touch(p) {
       p._rev = (p._rev || 0) + 1;
       p.updatedAt = new Date().toISOString();
-      this.dirty.add(p.id);
-      lsSet(LS_DIRTY, [...this.dirty]);
+      if (!this.dirty.has(p.id)) {
+        this.dirty.add(p.id);
+        lsSet(LS_DIRTY, [...this.dirty]);
+        this.saveCloudBase();
+      }
       this.persist();
       this.emit("data", { pfamId: p.id });
     },
@@ -372,6 +385,7 @@
       if (!keepDirty) {
         this.dirty.clear();
         lsSet(LS_DIRTY, []);
+        this.saveCloudBase();
       }
       if (this.ui.selectedId && !this.pfam(this.ui.selectedId)) this.ui.selectedId = null;
       this.persist.now();
@@ -392,6 +406,27 @@
     markClean(ids) {
       for (const id of ids) this.dirty.delete(id);
       lsSet(LS_DIRTY, [...this.dirty]);
+      this.saveCloudBase();
+    },
+
+    // ---- cloud copy ----------------------------------------------------------
+    /** After a cloud load or a full upload: the cloud now holds exactly these PFAMs. */
+    setCloud(pfams) {
+      this.cloudBase = {};
+      for (const p of pfams) this.cloudBase[p.id] = cloudCopy(p);
+      this.saveCloudBase();
+    },
+    /** After one PFAM was saved to (p) or deleted from (null) the cloud. */
+    setCloudPfam(id, p) {
+      if (p) this.cloudBase[id] = cloudCopy(p);
+      else delete this.cloudBase[id];
+      this.saveCloudBase();
+    },
+    /** Only sheets with unsynced edits need their cloud copy after a reload; keeps localStorage small. */
+    saveCloudBase() {
+      const out = {};
+      for (const id of this.dirty) if (this.cloudBase[id]) out[id] = this.cloudBase[id];
+      lsSet(LS_CLOUD, out);
     },
   };
 
