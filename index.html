@@ -59,6 +59,40 @@
       <button class="btn sync-now" id="bannerSync" type="button">⇪ 同步到雲端…</button>
       <button class="link" id="bannerDiscard" type="button">捨棄本機修改</button>
     </div>
+    <nav class="page-tabs" id="pageTabs" role="tablist" aria-label="頁面">
+      <button type="button" role="tab" data-page="overview" aria-selected="true">專案總覽</button>
+      <button type="button" role="tab" data-page="load" aria-selected="false">人力負載</button>
+    </nav>
+
+    <section class="panel" id="load" hidden aria-labelledby="ldTitle">
+      <div class="panel-head">
+        <h2 id="ldTitle">人力負載 <span id="ldCount" class="count"></span></h2>
+      </div>
+      <div class="ld-controls">
+        <label class="ld-field">人力類別
+          <input id="ldRoles" placeholder="STE, TE" autocomplete="off" title="以逗號分隔；負責欄包含任一類別的 task 都會列出"></label>
+        <label class="ld-field cap">負載上限
+          <input id="ldCap" type="number" min="1" step="1" inputmode="numeric" placeholder="—" title="同時進行的 task 超過這個數字就標紅">
+          <span class="muted">個 task 同時進行</span></label>
+        <div class="seg" role="group" aria-label="時間刻度">
+          <button type="button" data-ldzoom="day">日</button>
+          <button type="button" data-ldzoom="week">週</button>
+          <button type="button" data-ldzoom="month">月</button>
+        </div>
+        <button type="button" class="btn ghost" id="ldToday">今天</button>
+        <button type="button" class="btn ghost" id="ldCollapse">收合 / 展開 PFAM</button>
+      </div>
+      <div id="ldFilters"></div>
+      <div class="filter-row sub">
+        <label class="toggle"><input type="checkbox" id="ldFull"> 顯示完整時間軸<span id="ldRangeNote" class="muted"></span></label>
+        <label class="toggle" title="2nd build 分頁的前段多半是從 1st 複製的舊日期，預設不計入，避免重複計算"><input type="checkbox" id="ldInh"> 計入 2nd build「沿用 1st」的區段</label>
+      </div>
+      <div id="ldKpis" class="kpis ld-kpis"></div>
+      <div id="ldBar" class="ld-bar"></div>
+      <div id="ldChart" class="gantt"></div>
+      <p class="hint">負載 = 當天同時進行（開始日 ≤ 當天 ≤ 結束日）的 task 數；已封存分頁不計入 · 滑過負載圖看當天有哪些 task，點一下可標出 · 雙擊任務開啟該 PFAM</p>
+    </section>
+
     <section class="panel" id="portfolio" aria-labelledby="pfTitle">
       <div class="panel-head">
         <h2 id="pfTitle">專案總覽 <span id="pfCount" class="count"></span></h2>
@@ -193,6 +227,7 @@
   <script src="js/gantt.js"></script>
   <script src="js/table.js"></script>
   <script src="js/portfolio.js"></script>
+  <script src="js/load.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -54,6 +54,14 @@
     pfFullRange: false, // portfolio timeline: false = start 2 months before today
     tableTab: {}, // group id -> sheet id edited in the raw table
     showCloudDiff: true, // mark tasks that differ from the cloud copy
+    page: "overview", // "overview" (portfolio + detail) or "load" (人力負載)
+    loadRoles: ["STE", "TE"], // load page: tasks whose LEAD contains these
+    loadCap: 5, // load page: more concurrent tasks than this is over the limit (null = no limit)
+    loadZoom: "week",
+    loadFilters: { gen: [], site: [], phase: [], sku: [] },
+    loadCollapsed: {}, // pfam id -> its tasks hidden on the load page
+    loadFull: false,
+    loadInherited: false, // count 2nd-build sections that repeat the 1st build
   };
 
   const Store = {
@@ -76,6 +84,7 @@
       if ((savedUi.uiRev || 1) < 3 && this.ui.theme === "auto") this.ui.theme = DEFAULT_UI.theme; // rev 3: default theme became dark
       this.ui.uiRev = DEFAULT_UI.uiRev;
       this.ui.filters = Object.assign(clone(DEFAULT_UI.filters), this.ui.filters || {});
+      this.ui.loadFilters = Object.assign(clone(DEFAULT_UI.loadFilters), this.ui.loadFilters || {});
       this.dirty = new Set(lsGet(LS_DIRTY) || []);
       this.cloudBase = lsGet(LS_CLOUD) || {};
       if (this.ui.selectedId && !this.pfam(this.ui.selectedId)) this.ui.selectedId = null;

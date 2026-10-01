@@ -58,17 +58,31 @@
   const pending = new Set();
   let raf = 0;
   function renderSoon(...parts) {
-    (parts.length ? parts : ["list", "detail", "status"]).forEach((p) => pending.add(p));
+    (parts.length ? parts : ["list", "detail", "load", "status"]).forEach((p) => pending.add(p));
     if (!raf) raf = requestAnimationFrame(flush);
   }
+  // Only the visible page renders; switching pages re-renders everything ("page").
   function flush() {
     raf = 0;
     const parts = new Set(pending);
     pending.clear();
-    if (parts.has("filters")) Portfolio.renderFilters($("#pfFilters"));
-    if (parts.has("list")) Portfolio.render($("#pfList"));
-    if (parts.has("detail")) renderDetail();
+    if (parts.has("page")) applyPage();
+    if (Store.ui.page === "load") {
+      if (parts.has("load")) Load.render();
+    } else {
+      if (parts.has("filters")) Portfolio.renderFilters($("#pfFilters"));
+      if (parts.has("list")) Portfolio.render($("#pfList"));
+      if (parts.has("detail")) renderDetail();
+    }
     if (parts.has("status")) renderStatus();
+  }
+
+  function applyPage() {
+    const load = Store.ui.page === "load";
+    $("#portfolio").hidden = load;
+    $("#load").hidden = !load;
+    if (load) $("#detail").hidden = true;
+    document.querySelectorAll("[data-page]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.page === Store.ui.page)));
   }
 
   // ---------------------------------------------------------------- theme
@@ -659,16 +673,33 @@
   function bind() {
     Store.subscribe((reason, detail) => {
       if (reason === "data") {
-        renderSoon("list", "detail", "status");
+        renderSoon("list", "detail", "load", "status");
         if (detail && (detail.replaced || detail.deleted)) renderSoon("filters");
         noteLocalChange();
       }
       if (reason === "ui") {
+        if (detail && "page" in detail) renderSoon("page", "filters");
         if (detail && ("showHidden" in detail || "filters" in detail)) renderSoon("filters");
         if (detail && "theme" in detail) applyTheme();
-        renderSoon("list", "detail");
+        renderSoon("list", "detail", "load");
       }
       if (reason === "saveState") renderSoon("status");
+    });
+
+    // page tabs
+    $("#pageTabs").addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-page]");
+      if (!b || b.dataset.page === Store.ui.page) return;
+      Store.setUi({ page: b.dataset.page });
+      window.scrollTo({ top: 0 });
+    });
+    Load.bind({
+      tip,
+      onOpen(pfamId, taskId) {
+        tip.hide();
+        Store.setUi({ page: "overview", selectedId: pfamId });
+        focusRow(taskId);
+      },
     });
 
     // portfolio
@@ -1022,7 +1053,7 @@
     $("#rawSec").open = Store.ui.tableOpen;
     bind();
     XlImport.bind();
-    renderSoon("filters", "list", "detail", "status");
+    renderSoon("page", "filters", "list", "detail", "load", "status");
     applyShareLink();
     if (Remote.active) cloudLoad();
     setInterval(retrySync, 60000);
