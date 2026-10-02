@@ -818,13 +818,17 @@ select.in.cal { min-width: 104px; }
 .tip-cd.cd-added { color: var(--cd-new); }
 
 /* ---- page tabs */
-.page-tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--grid); margin-bottom: -8px; }
+.page-tabs { display: flex; gap: 6px; border-bottom: 3px solid var(--brand); margin-bottom: -8px; }
+/* Selected tab: solid brand fill joined to the rule below; the other: a muted outlined tab. */
 .page-tabs button {
-  border: 0; background: none; padding: 8px 20px; margin-bottom: -2px; border-radius: 8px 8px 0 0;
-  font-size: 15px; font-weight: 650; color: var(--ink-2); border-bottom: 3px solid transparent;
+  border: 1px solid var(--border); border-bottom: 0; background: var(--surface-2); padding: 8px 22px; border-radius: 9px 9px 0 0;
+  font-size: 15px; font-weight: 650; color: var(--muted);
 }
-.page-tabs button:hover { background: var(--brand-wash); color: var(--brand-ink); }
-.page-tabs button[aria-selected="true"] { color: var(--brand-ink); border-bottom-color: var(--brand); background: var(--surface); }
+.page-tabs button:hover { background: var(--brand-wash); color: var(--brand-ink); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
+.page-tabs button[aria-selected="true"] {
+  background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 750;
+  box-shadow: 0 -2px 10px color-mix(in srgb, var(--brand) 35%, transparent);
+}
 
 /* ---- resource load page (load.js) */
 .ld-controls {
