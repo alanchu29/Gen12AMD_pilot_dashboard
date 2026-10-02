@@ -415,12 +415,13 @@
   // ---------------------------------------------------------------- cloud sync
   // Edits stay in this browser until the user presses "同步到雲端" and confirms; nothing is uploaded automatically.
 
-  /** Local edits not yet uploaded: changed PFAMs, deleted PFAMs, holiday calendars. */
+  /** Local edits not yet uploaded: changed PFAMs, deleted PFAMs, holiday calendars, what-if PFAMs of the load page. */
   function localChanges() {
     const ids = [...Store.dirty].filter((id) => Store.pfam(id));
     const deleted = Store.data.deleted || [];
     const calendars = !!Store.data.calendarsDirty;
-    return { ids, deleted, calendars, count: ids.length + deleted.length + (calendars ? 1 : 0) };
+    const scenarios = !!Store.data.scenariosDirty;
+    return { ids, deleted, calendars, scenarios, count: ids.length + deleted.length + (calendars ? 1 : 0) + (scenarios ? 1 : 0) };
   }
 
   function describeChanges(ch) {
@@ -428,6 +429,7 @@
     if (ch.ids.length) parts.push(`${ch.ids.length} 個 PFAM 有修改`);
     if (ch.deleted.length) parts.push(`刪除 ${ch.deleted.length} 個 PFAM`);
     if (ch.calendars) parts.push("廠區假日有修改");
+    if (ch.scenarios) parts.push("人力負載手動 PFAM 有修改");
     return parts.join("、");
   }
 
@@ -469,6 +471,7 @@
       ...ch.ids.map((id) => "・" + Store.pfam(id).sheet),
       ...(ch.deleted.length ? [`・刪除 ${ch.deleted.length} 個 PFAM`] : []),
       ...(ch.calendars ? ["・廠區假日設定"] : []),
+      ...(ch.scenarios ? ["・人力負載手動新增的 PFAM / task"] : []),
     ];
     const shown = lines.slice(0, 15).join("\n") + (lines.length > 15 ? `\n…另外 ${lines.length - 15} 項` : "");
     if (!confirm(`將以下本機修改上傳到雲端（Google Sheet）？\n上傳後其他人重新整理就會看到。\n\n${shown}`)) return;
@@ -490,7 +493,7 @@
     if (!Remote.active || !sync.loaded) return;
     const ids = [...Store.dirty].filter((id) => Store.pfam(id));
     const deleted = Store.data.deleted || [];
-    if (!ids.length && !deleted.length && !Store.data.calendarsDirty) return;
+    if (!ids.length && !deleted.length && !Store.data.calendarsDirty && !Store.data.scenariosDirty) return;
     setSync("syncing");
     try {
       for (const id of deleted.slice()) {
@@ -501,6 +504,11 @@
       if (Store.data.calendarsDirty) {
         await Remote.saveCalendars(Store.data.calendars);
         Store.data.calendarsDirty = false;
+      }
+      if (Store.data.scenariosDirty) {
+        const sent = Store.data.scenarios; // replaced (not mutated) on every edit
+        await Remote.saveScenarios(sent);
+        if (Store.data.scenarios === sent) Store.data.scenariosDirty = false;
       }
       for (const id of ids) {
         const p = Store.pfam(id);
@@ -986,6 +994,7 @@
         for (const p of Store.data.pfams) if (r.versions && r.versions[p.id] != null) p.version = r.versions[p.id];
         Store.data.deleted = [];
         Store.data.calendarsDirty = false;
+        Store.data.scenariosDirty = false;
         Store.setCloud(Store.data.pfams);
         Store.markClean([...Store.dirty]);
         Store.persist.now();

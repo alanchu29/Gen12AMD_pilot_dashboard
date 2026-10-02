@@ -113,6 +113,10 @@
     saveCalendars(calendars) {
       return this.post({ action: "saveCalendars", calendars });
     },
+
+    saveScenarios(scenarios) {
+      return this.post({ action: "saveScenarios", scenarios });
+    },
   };
 
   window.Remote = Remote;

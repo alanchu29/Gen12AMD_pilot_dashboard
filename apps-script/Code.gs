@@ -3,7 +3,7 @@
  *
  * Bind this script to an empty Google Sheet (Extensions > Apps Script), paste this file,
  * then Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
- * Sheets (PFAMs / Tasks / Holidays / Meta) are created automatically on first use.
+ * Sheets (PFAMs / Tasks / Holidays / Meta / LoadScenarios) are created automatically on first use.
  *
  * Optional write protection: Project Settings > Script properties > EDIT_KEY = <secret>.
  * The web app must then be given the same key in its cloud settings.
@@ -13,6 +13,7 @@
  *      {action:"savePfam", pfam, tasks, baseVersion}   optimistic lock on version
  *      {action:"deletePfam", id}
  *      {action:"saveCalendars", calendars}
+ *      {action:"saveScenarios", scenarios}      what-if PFAMs of the resource load page
  */
 
 var PFAM_COLS = ['id', 'sheet', 'title', 'site', 'calendar', 'hidden', 'order', 'version', 'updatedAt', 'baselineAt',
@@ -22,6 +23,9 @@ var TASK_COLS = ['pfamId', 'id', 'type', 'name', 'lead', 'startMode', 'pred', 'l
   'predMissing'];
 var HOLIDAY_COLS = ['site', 'date', 'name'];
 var META_COLS = ['key', 'value'];
+// What-if PFAMs typed in on the resource load page (not Excel data): one row per task, rows of a PFAM together.
+// A PFAM without tasks is kept as a row with an empty taskId.
+var SCENARIO_COLS = ['pfamId', 'pfamName', 'off', 'taskId', 'taskName', 'start', 'end'];
 
 var NUMERIC = { lag: 1, workdays: 1, endAdj: 1, pct: 1, order: 1, version: 1 };
 var BOOLEAN = { hidden: 1, unnumbered: 1 };
@@ -53,6 +57,7 @@ function doPost(e) {
       case 'savePfam': out = savePfam_(body.pfam, body.tasks || [], body.baseVersion); break;
       case 'deletePfam': out = deletePfam_(body.id); break;
       case 'saveCalendars': writeHolidays_(body.calendars || {}); out = { ok: true }; break;
+      case 'saveScenarios': writeScenarios_(body.scenarios || []); out = { ok: true }; break;
       default: out = { ok: false, error: 'Unknown action: ' + body.action };
     }
   } catch (err) {
@@ -278,7 +283,7 @@ function readBundle_() {
   var source = {};
   try { source = JSON.parse(meta.source || '{}'); } catch (ignore) {}
 
-  return { schema: 1, source: source, calendars: calendars, pfams: pfams };
+  return { schema: 1, source: source, calendars: calendars, pfams: pfams, scenarios: readScenarios_() };
 }
 
 // ---------------------------------------------------------------- writes
@@ -296,6 +301,7 @@ function importAll_(data) {
   rewrite_('Tasks', TASK_COLS, taskRows);
   writeHolidays_(data.calendars || {});
   rewrite_('Meta', META_COLS, [['source', JSON.stringify(data.source || {})], ['importedAt', new Date().toISOString()]]);
+  if (data.scenarios) writeScenarios_(data.scenarios); // older exports have none: leave the sheet alone
   var versions = {};
   data.pfams.forEach(function (p) { versions[p.id] = p.version; });
   return { ok: true, pfams: pfamRows.length, tasks: taskRows.length, versions: versions };
@@ -307,6 +313,36 @@ function writeHolidays_(calendars) {
     (calendars[site].holidays || []).forEach(function (h) { rows.push(toRow_({ site: site, date: h.date, name: h.name }, HOLIDAY_COLS)); });
   });
   rewrite_('Holidays', HOLIDAY_COLS, rows);
+}
+
+function readScenarios_() {
+  var out = [];
+  var by = {};
+  readRows_('LoadScenarios', SCENARIO_COLS).forEach(function (r) {
+    if (!r.pfamId) return;
+    var mp = by[r.pfamId];
+    if (!mp) {
+      mp = by[r.pfamId] = { id: r.pfamId, name: r.pfamName || '' };
+      if (String(r.off).toUpperCase() === 'TRUE') mp.off = true;
+      mp.tasks = [];
+      out.push(mp);
+    }
+    if (r.taskId) mp.tasks.push({ id: r.taskId, name: r.taskName || '', start: r.start || '', end: r.end || '' });
+  });
+  return out;
+}
+
+function writeScenarios_(scenarios) {
+  var rows = [];
+  scenarios.forEach(function (mp) {
+    var head = { pfamId: mp.id, pfamName: mp.name, off: !!mp.off };
+    var tasks = mp.tasks || [];
+    if (!tasks.length) rows.push(toRow_(head, SCENARIO_COLS));
+    tasks.forEach(function (t) {
+      rows.push(toRow_({ pfamId: head.pfamId, pfamName: head.pfamName, off: head.off, taskId: t.id, taskName: t.name, start: t.start, end: t.end }, SCENARIO_COLS));
+    });
+  });
+  rewrite_('LoadScenarios', SCENARIO_COLS, rows);
 }
 
 function findPfamRow_(sh, id) {
@@ -387,4 +423,5 @@ function setup() {
   sheet_('Tasks', TASK_COLS);
   sheet_('Holidays', HOLIDAY_COLS);
   sheet_('Meta', META_COLS);
+  sheet_('LoadScenarios', SCENARIO_COLS);
 }

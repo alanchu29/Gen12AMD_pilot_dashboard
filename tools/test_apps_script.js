@@ -269,6 +269,19 @@ check("saveCalendars", post({ action: "saveCalendars", calendars: cals }).ok);
 check("write clears cache", !cacheStore.has("bundle:n"));
 check("calendar saved", bundle().calendars.WYLZ.holidays.some((h) => h.date === "2030-01-01"));
 
+// 4b. what-if PFAMs of the resource load page
+check("no scenarios yet", Array.isArray(bundle().scenarios) && bundle().scenarios.length === 0);
+const scen = [
+  { id: "mp1", name: "Gen 12.2 =what-if", tasks: [{ id: "mt1", name: "PoT/MFG Test", start: "2027-01-04", end: "2027-01-15" }, { id: "mt2", name: "", start: "2027-01-18", end: "" }] },
+  { id: "mp2", name: "empty", off: true, tasks: [] },
+];
+check("saveScenarios", post({ action: "saveScenarios", scenarios: scen }).ok);
+check("scenarios round-trip", JSON.stringify(bundle().scenarios) === JSON.stringify(scen), bundle().scenarios);
+const seedNoScen = JSON.parse(JSON.stringify(seed));
+check("importAll without scenarios keeps them", post({ action: "importAll", data: seedNoScen }).ok && bundle().scenarios.length === 2);
+check("importAll with scenarios replaces them", post({ action: "importAll", data: { ...seedNoScen, scenarios: [scen[1]] } }).ok && JSON.stringify(bundle().scenarios) === JSON.stringify([scen[1]]));
+check("saveScenarios empty", post({ action: "saveScenarios", scenarios: [] }).ok && bundle().scenarios.length === 0);
+
 // 5. edit key
 ctx.__key = "secret";
 check("wrong key rejected", post({ action: "deletePfam", id: "x" }).ok === false);

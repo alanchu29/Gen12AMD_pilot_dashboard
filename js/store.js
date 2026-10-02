@@ -57,6 +57,7 @@
     page: "overview", // "overview" (portfolio + detail) or "load" (人力負載)
     loadRoles: ["STE", "TE"], // load page: tasks whose LEAD contains these
     loadTaskNames: [], // load page: also tasks whose name contains any of these (case-insensitive)
+    loadPreset: false, // load page: also list the 執行生產測試 tasks (see PRESET in load.js)
     loadCap: 5, // load page: more concurrent tasks than this is over the limit (null = no limit)
     loadZoom: "week",
     loadFilters: { gen: [], site: [], phase: [], sku: [] },
@@ -86,6 +87,17 @@
       this.ui.uiRev = DEFAULT_UI.uiRev;
       this.ui.filters = Object.assign(clone(DEFAULT_UI.filters), this.ui.filters || {});
       this.ui.loadFilters = Object.assign(clone(DEFAULT_UI.loadFilters), this.ui.loadFilters || {});
+      if (!Array.isArray(this.data.scenarios)) this.data.scenarios = [];
+      // What-if PFAMs used to live in the UI settings (this browser only); move them into the data so they sync.
+      if (Array.isArray(this.ui.loadManual)) {
+        if (this.ui.loadManual.length && !this.data.scenarios.length) {
+          this.data.scenarios = this.ui.loadManual;
+          this.data.scenariosDirty = true;
+          lsSet(LS_DATA, this.data);
+        }
+        delete this.ui.loadManual;
+        this.persistUi();
+      }
       this.dirty = new Set(lsGet(LS_DIRTY) || []);
       this.cloudBase = lsGet(LS_CLOUD) || {};
       if (this.ui.selectedId && !this.pfam(this.ui.selectedId)) this.ui.selectedId = null;
@@ -386,8 +398,21 @@
       this.emit("data", { calendars: true });
     },
 
+    /** What-if PFAMs of the resource load page; synced to the cloud like the holiday calendars. */
+    setScenarios(list) {
+      this.data.scenarios = list;
+      this.data.scenariosDirty = true;
+      this.persist();
+      this.emit("data", { scenarios: true });
+    },
+
     /** Replace the whole dataset (JSON import, cloud load, reset). */
     replaceData(data, { keepDirty = false } = {}) {
+      // Data without what-if PFAMs (seed, older JSON exports, a backend without LoadScenarios) keeps the current ones.
+      if (!Array.isArray(data.scenarios)) {
+        data.scenarios = (this.data && this.data.scenarios) || [];
+        data.scenariosDirty = !!(this.data && this.data.scenariosDirty);
+      }
       this.data = data;
       this.cache.clear();
       this.undoStack = [];

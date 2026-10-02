@@ -409,6 +409,9 @@
     // Sheets added by the import must be removed from the cloud again; everything else re-pushed.
     before.deleted = [...(before.deleted || []).filter((id) => !beforeIds.has(id)), ...[...nowIds].filter((id) => !beforeIds.has(id))];
     before.calendarsDirty = true;
+    // The load page's what-if PFAMs are not Excel data: keep them as they are now.
+    before.scenarios = Store.data.scenarios;
+    before.scenariosDirty = Store.data.scenariosDirty;
     Store.replaceData(before, { keepDirty: true });
     for (const p of before.pfams) Store.dirty.add(p.id);
     Store.markClean([]);

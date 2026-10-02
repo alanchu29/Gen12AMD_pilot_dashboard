@@ -27,6 +27,9 @@
   ];
   const TIP_TASKS = 14;
   const NAME_COMBO = "依任務名稱"; // legend entry for tasks picked by name rather than by role
+  // Preset task group: when switched on, tasks whose name contains one of these are listed too (on top of roles / names).
+  const PRESET = { name: "執行生產測試", tasks: ["PoT/MFG Test", "MDaaS Test", "BSL Test", "Golden rack MFG run"] };
+  const MANUAL_COMBO = "手動新增"; // legend entry for the what-if PFAMs typed in on this page
   const SVGNS = "http://www.w3.org/2000/svg";
 
   function el(tag, attrs, parent) {
@@ -69,6 +72,7 @@
     const ui = Store.ui;
     const roles = ui.loadRoles;
     const names = ui.loadTaskNames.map((k) => k.toLowerCase());
+    const presetKeys = ui.loadPreset ? PRESET.tasks.map((k) => k.toLowerCase()) : [];
     const units = [];
     const combos = [];
     let skipped = 0;
@@ -90,8 +94,11 @@
           if (t.type !== "task") continue;
           const hit = U.matchRoles(t.lead, roles);
           // Tasks named in "另計任務名稱" count too, whoever leads them.
-          const nameKey = hit.length ? null : names.find((k) => String(t.name).toLowerCase().includes(k));
-          if (!hit.length && !nameKey) continue;
+          // So do the 執行生產測試 tasks while that button is on.
+          const lname = String(t.name).toLowerCase();
+          const nameKey = hit.length ? null : names.find((k) => lname.includes(k));
+          const presetKey = hit.length || nameKey ? null : presetKeys.find((k) => lname.includes(k));
+          if (!hit.length && !nameKey && !presetKey) continue;
           if (inherited && !ui.loadInherited) {
             skipped++;
             continue;
@@ -101,9 +108,13 @@
           const a = r.start != null ? r.start : r.end;
           const b = r.end != null ? r.end : r.start;
           if (b < a) continue; // "結束早於開始": no meaningful span
-          const combo = hit.length ? hit.join(" + ") : NAME_COMBO;
+          const byName = nameKey
+            ? ui.loadTaskNames[names.indexOf(nameKey)]
+            : presetKey
+            ? PRESET.tasks[presetKeys.indexOf(presetKey)]
+            : null;
+          const combo = hit.length ? hit.join(" + ") : nameKey ? NAME_COMBO : PRESET.name;
           if (!combos.includes(combo)) combos.push(combo);
-          const byName = nameKey ? ui.loadTaskNames[names.indexOf(nameKey)] : null;
           tasks.push({ key: p.id + ":" + t.id, unit: u, p, build: mem.build, t, a, b, hit, byName, combo, single: a === b && (Number(t.workdays) || 0) <= 1 });
           n++;
         }
@@ -111,8 +122,26 @@
       }
       if (tasks.length) units.push({ ...u, tasks, sites: [...sites].sort() });
     }
-    // Legend order: single roles in the order typed, then combinations, then tasks picked by name.
-    const rank = (c) => (c === NAME_COMBO ? 1e6 : c.split(" + ").length * 100 + roles.indexOf(c.split(" + ")[0]));
+    // What-if PFAMs typed in on this page: every task with valid dates counts, whatever the roles or PFAM filters.
+    for (const mp of Store.data.scenarios) {
+      if (mp.off) continue;
+      const u = { id: mp.id, name: mp.name || "（未命名）", manual: true, members: [] };
+      const tasks = [];
+      for (const mt of mp.tasks) {
+        const a = E.toDay(mt.start || mt.end);
+        const b = E.toDay(mt.end || mt.start);
+        if (a == null || b < a) continue;
+        const t = { id: mt.id, name: mt.name || "（未命名 task）", lead: "", pct: 0, workdays: E.networkdays(a, b) };
+        tasks.push({ key: mp.id + ":" + mt.id, unit: u, p: null, build: null, t, a, b, hit: [], byName: null, combo: MANUAL_COMBO, single: a === b });
+      }
+      if (tasks.length) {
+        if (!combos.includes(MANUAL_COMBO)) combos.push(MANUAL_COMBO);
+        units.push({ ...u, tasks, sites: [] });
+      }
+    }
+    // Legend order: single roles in the order typed, then combinations, then tasks picked by name, the preset, typed-in PFAMs.
+    const rank = (c) =>
+      c === NAME_COMBO ? 1e6 : c === PRESET.name ? 2e6 : c === MANUAL_COMBO ? 3e6 : c.split(" + ").length * 100 + roles.indexOf(c.split(" + ")[0]);
     combos.sort((x, y) => rank(x) - rank(y));
 
     const all = units.flatMap((u) => u.tasks);
@@ -163,6 +192,29 @@
     return out;
   }
 
+  // ---- what-if PFAMs (Store.data.scenarios): [{ id, name, off, tasks: [{ id, name, start, end }] }], dates as YYYY-MM-DD.
+  // Not Excel data: an Excel import leaves them alone; "同步到雲端" uploads them to the LoadScenarios sheet.
+  let manualSig = null; // the list the editor last drew; field edits update it so typing doesn't redraw the editor
+  let manualSeen = false;
+
+  function manualDays(mt) {
+    const a = E.toDay(mt.start);
+    const b = E.toDay(mt.end);
+    if (a == null || b == null) return `<span class="muted">${a == null && b == null ? "請填日期" : "單日"}</span>`;
+    if (b < a) return `<span class="late">結束早於開始，不計入</span>`;
+    return `<span class="muted">${E.networkdays(a, b)} 個工作天</span>`;
+  }
+
+  function newManualTask() {
+    const t = U.today();
+    return { id: U.uid("mt"), name: "", start: E.fromDay(t), end: E.fromDay(t + 6) };
+  }
+
+  function saveManual(list, redraw) {
+    if (!redraw) manualSig = JSON.stringify(list);
+    Store.setScenarios(list);
+  }
+
   function kpi(label, value, sub, cls) {
     return `<div class="kpi ${cls || ""}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ""}</div>`;
   }
@@ -183,6 +235,85 @@
         const list = ev.target.value.split(/[,，、;；\n]+/).map((s) => s.trim()).filter(Boolean);
         Store.setUi({ loadTaskNames: [...new Set(list)] });
       });
+      $("#ldPreset").addEventListener("click", () => {
+        pin = null;
+        pinOnly = false;
+        Store.setUi({ loadPreset: !Store.ui.loadPreset });
+      });
+      const mb = $("#ldManualBody");
+      const copy = () => JSON.parse(JSON.stringify(Store.data.scenarios));
+      const find = (list, n) => {
+        const pe = n.closest("[data-pid]");
+        const te = n.closest("[data-tid]");
+        const mp = pe && list.find((x) => x.id === pe.dataset.pid);
+        return { mp, mt: mp && te ? mp.tasks.find((x) => x.id === te.dataset.tid) : null, te };
+      };
+      const addPfam = () => {
+        const inp = $("#lmNewName");
+        const name = inp.value.trim();
+        if (!name) {
+          inp.focus();
+          return;
+        }
+        const mt = newManualTask();
+        saveManual(copy().concat({ id: U.uid("mp"), name, tasks: [mt] }), true);
+        this.renderManual();
+        const n = mb.querySelector(`[data-tid="${mt.id}"] [data-mf="tname"]`);
+        if (n) n.focus();
+      };
+      mb.addEventListener("click", (ev) => {
+        const b = ev.target.closest("[data-mm]");
+        if (!b) return;
+        const act = b.dataset.mm;
+        if (act === "add-pfam") return addPfam();
+        const list = copy();
+        const { mp, mt } = find(list, b);
+        if (!mp) return;
+        if (act === "del-pfam") {
+          if (!confirm(`刪除手動新增的「${mp.name}」和它的 ${mp.tasks.length} 個 task？`)) return;
+          list.splice(list.indexOf(mp), 1);
+        } else if (act === "del-task" && mt) {
+          mp.tasks.splice(mp.tasks.indexOf(mt), 1);
+        } else if (act === "add-task") {
+          const nt = newManualTask();
+          const last = mp.tasks[mp.tasks.length - 1];
+          if (last && last.end) {
+            // pick up where the last task ends
+            const s = E.toDay(last.end) + 1;
+            nt.start = E.fromDay(s);
+            nt.end = E.fromDay(s + 6);
+          }
+          mp.tasks.push(nt);
+          saveManual(list, true);
+          this.renderManual();
+          const n = mb.querySelector(`[data-tid="${nt.id}"] [data-mf="tname"]`);
+          if (n) n.focus();
+          return;
+        }
+        saveManual(list, true);
+      });
+      mb.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" && !ev.isComposing && ev.target.id === "lmNewName") addPfam();
+      });
+      mb.addEventListener("change", (ev) => {
+        const f = ev.target.dataset.mf;
+        if (!f) return;
+        const list = copy();
+        const { mp, mt, te } = find(list, ev.target);
+        if (!mp) return;
+        if (f === "name") mp.name = ev.target.value.trim();
+        else if (f === "on") {
+          mp.off = !ev.target.checked;
+          ev.target.closest(".lm-pfam").classList.toggle("off", mp.off);
+        }
+        else if (mt && f === "tname") mt.name = ev.target.value.trim();
+        else if (mt && (f === "start" || f === "end")) {
+          mt[f] = ev.target.value;
+          te.querySelector(".lm-days").innerHTML = manualDays(mt);
+        }
+        saveManual(list, false);
+      });
+
       $("#ldCap").addEventListener(
         "input",
         U.debounce((ev) => {
@@ -292,7 +423,7 @@
       root.addEventListener("dblclick", (ev) => {
         const n = ev.target.closest("[data-id]");
         const x = n && cur && cur.byKey.get(n.getAttribute("data-id"));
-        if (x) opts.onOpen(x.unit.id, x.p.id, x.t.id);
+        if (x && x.p) opts.onOpen(x.unit.id, x.p.id, x.t.id);
       });
     },
 
@@ -301,10 +432,60 @@
       const $ = U.$;
       if (document.activeElement !== $("#ldRoles")) $("#ldRoles").value = ui.loadRoles.join(", ");
       if (document.activeElement !== $("#ldNames")) $("#ldNames").value = ui.loadTaskNames.join(", ");
+      $("#ldPreset").setAttribute("aria-pressed", String(!!ui.loadPreset));
+      $("#ldPreset").classList.toggle("on", !!ui.loadPreset);
       if (document.activeElement !== $("#ldCap")) $("#ldCap").value = ui.loadCap > 0 ? ui.loadCap : "";
       document.querySelectorAll("[data-ldzoom]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.ldzoom === ui.loadZoom)));
       $("#ldFull").checked = ui.loadFull;
       $("#ldInh").checked = ui.loadInherited;
+    },
+
+    renderManual() {
+      const list = Store.data.scenarios;
+      const n = list.reduce((s, mp) => s + mp.tasks.length, 0);
+      U.$("#ldManualCount").textContent = list.length ? `${list.length} 個 PFAM · ${n} 個 task` : "";
+      if (!manualSeen) {
+        manualSeen = true;
+        if (list.length) U.$("#ldManual").open = true;
+      }
+      const sig = JSON.stringify(list);
+      if (sig === manualSig) return;
+      manualSig = sig;
+      const e = U.esc;
+      U.$("#ldManualBody").innerHTML =
+        list
+          .map(
+            (mp) =>
+              `<div class="lm-pfam${mp.off ? " off" : ""}" data-pid="${mp.id}">
+                <div class="lm-head">
+                  <input class="lm-name" data-mf="name" value="${e(mp.name)}" placeholder="PFAM 名稱" aria-label="PFAM 名稱">
+                  <label class="toggle"><input type="checkbox" data-mf="on"${mp.off ? "" : " checked"}> 計入負載</label>
+                  <button type="button" class="link lm-del" data-mm="del-pfam">✕ 刪除 PFAM</button>
+                </div>
+                ${mp.tasks
+                  .map(
+                    (mt) =>
+                      `<div class="lm-task" data-tid="${mt.id}">
+                        <input class="lm-tname" data-mf="tname" value="${e(mt.name)}" placeholder="task 名稱" aria-label="task 名稱">
+                        <input type="date" data-mf="start" value="${e(mt.start)}" aria-label="開始日">
+                        <span class="muted">→</span>
+                        <input type="date" data-mf="end" value="${e(mt.end)}" aria-label="結束日">
+                        <span class="lm-days">${manualDays(mt)}</span>
+                        <button type="button" class="icon" data-mm="del-task" aria-label="刪除 task" title="刪除 task">✕</button>
+                      </div>`
+                  )
+                  .join("")}
+                <button type="button" class="link" data-mm="add-task">＋ 新增 task</button>
+              </div>`
+          )
+          .join("") +
+        `<div class="lm-add">
+          <input id="lmNewName" placeholder="新 PFAM 名稱，例如 Gen 12.2 GP-HL" aria-label="新 PFAM 名稱" autocomplete="off">
+          <button type="button" class="btn" data-mm="add-pfam">＋ 新增 PFAM</button>
+          <span class="muted">${
+            Remote.active ? "修改先存在這個瀏覽器，按上方「同步到雲端」後其他人才看得到" : "目前為本機模式，只存在這個瀏覽器"
+          }；匯入 Excel 不會影響這裡的資料。一律計入負載，不受人力類別與 PFAM 範圍篩選影響。</span>
+        </div>`;
     },
 
     renderFilters() {
@@ -331,12 +512,20 @@
       const ui = Store.ui;
       this.syncControls();
       this.renderFilters();
+      this.renderManual();
       const roles = ui.loadRoles;
       const names = ui.loadTaskNames;
-      const what = [roles.join(" / "), names.length ? "指定任務" : ""].filter(Boolean).join(" + ");
       const cap = Number(ui.loadCap) > 0 ? Number(ui.loadCap) : null;
       const today = U.today();
       const m = collect();
+      const what = [
+        roles.join(" / "),
+        names.length ? "指定任務" : "",
+        ui.loadPreset ? PRESET.name : "",
+        m.units.some((u) => u.manual) ? MANUAL_COMBO : "",
+      ]
+        .filter(Boolean)
+        .join(" + ");
 
       if (!m.all.length) {
         cur = null;
@@ -346,9 +535,11 @@
         $("#ldRangeNote").textContent = "";
         const filtered = FILTERS.some(([k]) => ui.loadFilters[k] && ui.loadFilters[k].length);
         root.innerHTML = `<div class="empty-note">${
-          !roles.length && !names.length
-            ? "請在上方輸入要檢查的人力類別（例如 STE, TE）或任務名稱"
-            : `沒有符合的任務（負責欄含 ${U.esc(roles.join(" / ") || "—")}${names.length ? `，或名稱含「${U.esc(names.join("、"))}」` : ""}）${filtered ? "，或都被 PFAM 範圍篩掉了" : ""}。`
+          !roles.length && !names.length && !ui.loadPreset
+            ? "請在上方輸入要檢查的人力類別（例如 STE, TE）或任務名稱，或手動新增 PFAM"
+            : `沒有符合的任務（負責欄含 ${U.esc(roles.join(" / ") || "—")}${names.length ? `，或名稱含「${U.esc(names.join("、"))}」` : ""}${
+                ui.loadPreset ? `，或屬於「${PRESET.name}」` : ""
+              }）${filtered ? "，或都被 PFAM 範圍篩掉了" : ""}。`
         }</div>`;
         return;
       }
@@ -564,8 +755,11 @@
           lab.className = "g-row is-section ld-sheet";
           lab.innerHTML =
             `<button class="caret" data-ldtoggle="${u.id}" aria-label="${r.collapsed ? "展開" : "收合"} PFAM" aria-expanded="${!r.collapsed}">${r.collapsed ? "▸" : "▾"}</button>` +
-            `<span class="c-name" title="${U.esc(u.name)}\nExcel 分頁：${U.esc(u.members.map((mem) => mem.p.sheet).join("、"))}">${U.esc(u.name)}</span>` +
+            `<span class="c-name" title="${U.esc(u.name)}\n${
+              u.manual ? "手動新增（評估用）" : `Excel 分頁：${U.esc(u.members.map((mem) => mem.p.sheet).join("、"))}`
+            }">${U.esc(u.name)}</span>` +
             builds +
+            (u.manual ? `<span class="tag lm-tag">手動</span>` : "") +
             u.sites.map((st) => `<span class="tag site-${st}">${U.esc(st)}</span>`).join("") +
             `<span class="ld-n">${u.tasks.length} 個</span>`;
           labels.appendChild(lab);
@@ -582,7 +776,9 @@
         lab.dataset.id = t.key;
         lab.innerHTML =
           `<span class="c-name" title="${U.esc(t.t.name)}">${t.build ? `<span class="build-pill">${U.esc(t.build)}</span>` : ""}${U.esc(t.t.name)}</span>` +
-          `<span class="role-pill${t.hit.length ? "" : " by-name"}">${t.hit.length ? U.esc(t.hit.join("/")) : "名稱"}</span>` +
+          (t.unit.manual
+            ? `<span class="role-pill by-hand">手動</span>`
+            : `<span class="role-pill${t.hit.length ? "" : " by-name"}">${t.hit.length ? U.esc(t.hit.join("/")) : t.combo === PRESET.name ? "生產測試" : "名稱"}</span>`) +
           `<span class="c-lead" title="${U.esc(t.t.lead)}">${U.esc(t.t.lead)}</span>`;
         labels.appendChild(lab);
         el("rect", { x: 0, y, width: W, height: ROW_H, class: "rowhit" + (r.zebra ? " zebra" : "") + (hl ? " focus" : ""), "data-id": t.key }, bg);
@@ -662,15 +858,21 @@
       return (
         `<div class="tip-title">${U.esc(t.t.name)}</div>` +
         `<div class="tip-row"><span>PFAM</span><b>${U.esc(t.unit.name)}${t.build ? ` · ${U.esc(t.build)}` : ""}</b></div>` +
-        `<div class="tip-row"><span>Excel 分頁</span><b>${U.esc(t.p.sheet)}</b></div>` +
-        (t.hit.length ? "" : `<div class="tip-row"><span>列入原因</span><b>任務名稱符合「${U.esc(t.byName)}」</b></div>`) +
-        `<div class="tip-row"><span>負責</span><b>${U.esc(t.t.lead)}</b></div>` +
+        (t.p
+          ? `<div class="tip-row"><span>Excel 分頁</span><b>${U.esc(t.p.sheet)}</b></div>` +
+            (t.hit.length
+              ? ""
+              : `<div class="tip-row"><span>列入原因</span><b>${
+                  t.combo === PRESET.name ? `屬於「${PRESET.name}」（名稱含「${U.esc(t.byName)}」）` : `任務名稱符合「${U.esc(t.byName)}」`
+                }</b></div>`) +
+            `<div class="tip-row"><span>負責</span><b>${U.esc(t.t.lead)}</b></div>`
+          : `<div class="tip-row"><span>列入原因</span><b>手動新增（評估用）</b></div>`) +
         `<div class="tip-row"><span>日期</span><b>${U.fmt(t.a, "full")} → ${U.fmt(t.b, "full")}</b></div>` +
         `<div class="tip-row"><span>工期</span><b>${t.t.workdays != null ? t.t.workdays + " 工作天" : "—"} · ${t.b - t.a + 1} 日曆天</b></div>` +
         (t.t.pct ? `<div class="tip-row"><span>完成</span><b>${t.t.pct}%</b></div>` : "") +
         `<div class="tip-row"><span>期間最多同時</span><b class="${hot ? "late" : ""}">${most} 個 PFAM${hot ? `（超過上限 ${most - cur.cap}）` : ""}</b></div>` +
         notes +
-        `<div class="ld-tip-hint">雙擊開啟這個 PFAM 的甘特圖</div>`
+        `<div class="ld-tip-hint">${t.p ? "雙擊開啟這個 PFAM 的甘特圖" : "在上方「手動新增 PFAM / task」修改"}</div>`
       );
     },
   };

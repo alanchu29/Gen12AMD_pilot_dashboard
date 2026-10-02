@@ -73,6 +73,8 @@
           <input id="ldRoles" placeholder="STE, TE" autocomplete="off" title="以逗號分隔；負責欄包含任一類別的 task 都會列出"></label>
         <label class="ld-field">另計任務名稱
           <input id="ldNames" placeholder="例如 Golden rack, PoT" autocomplete="off" title="以逗號分隔；任務名稱包含這些字（不分大小寫）也列入負載，不論負責欄"></label>
+        <button type="button" class="chip" id="ldPreset" aria-pressed="false"
+          title="開啟時另外列入 PoT/MFG Test、MDaaS Test、BSL Test、Golden rack MFG run（不論負責欄），與人力類別、另計任務名稱一起套用">執行生產測試</button>
         <label class="ld-field cap">負載上限
           <input id="ldCap" type="number" min="1" step="1" inputmode="numeric" placeholder="—" title="同時進行的 PFAM 超過這個數字就標紅">
           <span class="muted">個 PFAM 同時進行</span></label>
@@ -84,6 +86,10 @@
         <button type="button" class="btn ghost" id="ldToday">今天</button>
         <button type="button" class="btn ghost" id="ldCollapse">收合 / 展開 PFAM</button>
       </div>
+      <details class="ld-manual" id="ldManual">
+        <summary>手動新增 PFAM / task（評估用）<span id="ldManualCount" class="count"></span></summary>
+        <div id="ldManualBody"></div>
+      </details>
       <div id="ldFilters"></div>
       <div class="filter-row sub">
         <label class="toggle"><input type="checkbox" id="ldFull"> 顯示完整時間軸<span id="ldRangeNote" class="muted"></span></label>
